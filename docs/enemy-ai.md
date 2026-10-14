@@ -32,7 +32,7 @@ Presentation now uses 17 original character models, including the separate vampi
 
 ## Availability and verification
 
-Wave 1 introduces the six studio roles. Wave 2 adds ninja/zombie/soldier; wave 3 expands the pool with magician/vampire/kart/elf. Trash uses a separate encounter trigger after 12 kills in either survival mode, only in arenas with designated anchors. Trash never uses random floor positions; only one is alive at a time, and hits/cake lures cannot move it. The nearest source anchor is selected; waiting trash remains visible after its hiding interval, and a stationary trash encounter does not block expanded-wave progression. The increasing wave size brings the full pool into encounters. Every fourth wave includes a brute boss and every fifth includes a clown boss.
+Wave 1 introduces the six studio roles. Wave 2 adds ninja/zombie/soldier; wave 3 expands the pool with magician/vampire/kart/elf. Trash uses a separate encounter trigger after 12 kills in either survival mode, only in arenas with designated anchors. Trash never uses random floor positions; only one is alive at a time, and hits/cake lures cannot move it. A source anchor is randomly selected; the recovered skeletal animation supplies the ducking motion, and a stationary trash encounter does not block expanded-wave progression. The increasing wave size brings the full pool into encounters. Every fourth wave includes a brute boss and every fifth includes a clown boss.
 
 - `npm --prefix web test`: deterministic state transitions, windup dodge, cover routing, projectile collision/impact, bomber interruption, zombie revival, special phases, full roster availability, reset, animation, weapon and input regressions.
 - `node web/tests/browser-enemies.mjs`: six live first-wave types, projectiles and pause in Chrome.
@@ -56,3 +56,57 @@ Bomber detonation follows `Enemy03_Suicidel.ccExplode` →
 `CentralController12 Explosion` → `Ehit_Sprite RPG`, using its 18-frame
 `SpriteExplodeEffects` animation instead of the generic sphere. The effect
 plays once and is removed after the source controller's one-second lifetime.
+
+Gunner roll continuity: `ShooterSoldier_Roll` and `ShooterSoldier_ShootRoll`
+contain sideways pelvis translation followed by a return to their starting
+position. Runtime clips now use only the first 1.1-second roll and 1.5-second
+shooting segment, with horizontal pelvis translation removed. The AI performs
+a collision-aware four-unit roll over 1.1 seconds, keeps its facing fixed, and
+continues from the resulting world position. Shooting bursts enter the same
+roll state. Repeated hits damage the gunner without restarting its current roll.
+Recovered animation JSON remains unchanged.
+
+Expanded wave spawning now follows the APK `EnemySpawn.Spawn` coroutine's
+one-at-a-time scheduling: wait between spawns, stop at the live-enemy cap,
+and consume a pending entry only after a successful spawn. The coroutine
+starts with a three-second wait; `GameManager` supplies stage-specific
+`SpawnTime01..04` and `MaxEnemysOnScreen01..04` values. Its campaign values
+vary by level, so this web survival adaptation retains the expanded wave
+rosters/counts and uses the recovered survival cadence 3/2/2/1 seconds and
+live caps 4/5/8/10 as waves advance. It does not claim campaign-wave parity.
+Source spawn anchors are tried before valid random arena positions. Failed
+placement retries after half a second without consuming the queued enemy.
+The next wave waits for both the queue and active mobile enemies to clear;
+the independent stationary trash encounter still cannot hold up a wave.
+HUD counts distinguish active and incoming enemies. Pause freezes scheduling,
+and restart clears the queue. Original VR survival keeps its existing source
+progression and staggered spawner.
+
+
+Trash recreation: `EnemyAI8Trash` starts patrol after 0.2 seconds, latches proximity at
+100 units (serialized scene value), and plays the complete 4.566667-second
+`Shootertrash_shoot` clip. `EnemyShootGrenade` releases four tomatoes at 1.0,
+1.3, 1.8 and 2.3 seconds. Facing and distance-based launch speed/lift are selected
+at attack start; projectiles use gravity, scenery collision and a three-second
+lifetime. The launch position comes from the recovered `enemyPosition` bone.
+`DamageReciver08Trash` supplies 100 base health and the original death animation;
+nonlethal hits no longer restart shooting. The web survival health multiplier and
+4-point damage remain web balancing, rather than campaign difficulty parity.
+
+The renderer preserves this model's original root scale and origin instead of
+normalizing its crouched pose to a standing puppet. Bin elevation is retained,
+including on death. Town uses the three regional sets of bin coordinates from
+`StreetSet.DefultCoverPoints/MoveCoverPoints`; lobby uses recovered scene anchors.
+The existing 12-kill web survival trigger remains. Original attack, hit and death
+sounds are exported with `scripts/export_trash_audio.py`. These changes do not
+claim a complete port of campaign head damage, dismemberment or Unity physics.
+
+Player defeat now mirrors `Player.ApplyDamageToPlayer` and `EnemysWinBroadcast`:
+play the recovered `Default` camera collapse, hide the weapon, and broadcast victory
+to surviving puppets with the source's randomized 0–1 second start delay. Victory
+animation/audio continue after combat stops; no further attacks or spawns occur.
+`LaughSound` assignments come from each serialized enemy; vampire/clown use their
+script-loaded clips. Bat/kart forms, which lack a separate victory voice, use the
+original crowd victory recording. Specialized rigs retain their recovered celebration
+clips rather than receiving an invented humanoid rig. Victory audio stops on restart
+or arena/menu changes. Corpse lifetime follows the actual death-clip duration.

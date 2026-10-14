@@ -94,6 +94,7 @@
     "grenade": "assets/enemies/grenade-projectile.json",
     "fireball": "assets/enemies/fireball-projectile.json",
     "fishSplat": "assets/enemies/fishSplat-projectile.json",
-    "bomberBlast": "assets/enemies/bomberBlast-projectile.json"
+    "bomberBlast": "assets/enemies/bomberBlast-projectile.json",
+    "tomatoImpact": "assets/enemies/tomatoImpact-projectile.json"
   }
 }

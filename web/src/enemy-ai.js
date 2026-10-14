@@ -1,3 +1,4 @@
+import {updateTrash} from './trash-enemy.js';
 import {clearSegment,validPoint} from './enemy-navigation.js';
 // Behavior sources: recovered Assembly-UnityScript/EnemyAI*.cs; see docs/enemy-ai.md.
 // Speeds, sizes and health are scaled for the existing 3.3-unit web puppet and survival waves.
@@ -12,7 +13,7 @@ export const ENEMY_TYPES={
  strong:profile('Strong puppet','EnemyAI05Strong1',2.1,210,{damage:18,reach:2.7,scale:1.3,variant:2}),
  ninja:profile('Ninja','EnemyAI06NINJA',5.3,95,{damage:10,variant:2}),
  zombie:profile('Zombie','EnemyAI07Zombie',1.8,105,{sprint:3.4,damage:10,revives:1,variant:2,coverStops:0}),
- trash:profile('Trash thrower','EnemyAI8Trash',0,115,{ranged:true,projectile:'tomato',shotDelay:2,stationary:true,variant:2}),
+ trash:profile('Trash thrower','EnemyAI8Trash',0,100,{ranged:true,damage:4,projectile:'tomato',shotDelay:1,stationary:true,variant:2}),
  magician:profile('Magician','EnemyAI10Magicion',3.1,150,{variant:1}),
  vampire:profile('Vampire','EnemyAI11Vempire',3.8,170,{sprint:6.2,damage:12,variant:1}),
  boss:profile('Brute boss','EnemyAI08BossLite',2.5,650,{damage:25,reach:3,scale:1.65,ranged:true,projectile:'grenade',shotDelay:2,boss:true}),
@@ -23,17 +24,23 @@ export const ENEMY_TYPES={
 export function createEnemy(type,pos,id,wave=1){
  const p=ENEMY_TYPES[type];if(!p)throw new Error(`Unknown enemy type: ${type}`);
  return {...pos,id,type,health:p.health*(1+(wave-1)*.08),maxHealth:p.health*(1+(wave-1)*.08),speed:p.speed,variant:p.variant,scale:p.scale,
-   attack:0,flash:0,hitVersion:0,animation:'run',state:p.stationary?'hidden':'patrol',timer:p.stationary?.5:0,age:0,
+   attack:0,flash:0,hitVersion:0,animation:'run',state:p.stationary?'trashReady':'patrol',timer:p.stationary?.5:0,age:0,
    coverLeft:p.coverStops,coverIndex:-1,revives:p.revives||0,special:4,route:[],repath:0,y:0,shield:false,hidden:false,form:'puppet',shots:0};
 }
 export function enter(e,state,time=0){if(['windup','throw','fuse','magic','teleport','transform','defend','firebreath','jump','down','rise','roll','charge'].includes(state))e.actionVersion=(e.actionVersion||0)+1;e.state=state;e.timer=time;e.route=[];e.repath=0;}
 export function enemyHit(s,e,damage){
  const p=ENEMY_TYPES[e.type];if(!p)return damage;
  if(e.shield||e.hidden||e.state==='rise'||e.state==='down')return 0;
+ if(e.type==='trash')return damage; // DamageReciver08Trash has no stagger/restart.
  if(p.revives&&damage>=e.health&&e.revives>0){e.revives--;e.health=e.maxHealth*.65;e.speed=p.sprint;enter(e,'down',2);return 0;}
  if(e.type==='bomber'&&e.state==='fuse')return damage; // A lethal hit can interrupt the fuse.
- if(!p.boss){enter(e,p.roll?'roll':'stagger',p.roll?.7:1);e.speed=p.sprint||p.speed;}
+ if(!p.boss){if(p.roll){if(e.state!=='roll')beginSoldierRoll(s,e);}else enter(e,'stagger',1);e.speed=p.sprint||p.speed;}
  return damage;
+}
+function beginSoldierRoll(s,e){
+ e.rollFacing=e.animation==='run'&&Number.isFinite(e.heading)?e.heading:Math.atan2(s.player.x-e.x,s.player.z-e.z);
+ const side=e.side??-1;e.side=-side;e.rollDirection={x:Math.cos(e.rollFacing)*side,z:-Math.sin(e.rollFacing)*side};
+ enter(e,'roll',1.1);
 }
 function move(s,e,goal,speed,dt,moveBody){
  e.repath-=dt;
@@ -64,10 +71,11 @@ function relocate(s,e,nearPlayer=true){
 function sightObstacles(s,e){return ENEMY_TYPES[e.type].stationary?s.obstacles.filter(b=>!(e.x>=b.minX&&e.x<=b.maxX&&e.z>=b.minZ&&e.z<=b.maxZ)):s.obstacles;}
 function fire(s,e,kind){
  const p=ENEMY_TYPES[e.type];
- if(!clearSegment(e,s.player,sightObstacles(s,e)))return;
+ if(e.type!=='trash'&&!clearSegment(e,s.player,sightObstacles(s,e)))return;
  const distance=Math.hypot(e.x-s.player.x,e.z-s.player.z);
  const duration=Math.max(.55,distance/(kind==='fireball'?16:12));
  s.projectiles.push({id:++s.effectId,owner:e.id,ignoredObstacles:p.stationary?s.obstacles.filter(b=>!sightObstacles(s,e).includes(b)):[],kind:kind||p.projectile,x:e.x,z:e.z,y:2.2,start:{x:e.x,z:e.z},target:{x:s.player.x,z:s.player.z},age:0,duration,damage:p.damage,radius:kind==='fireball'?1.5:2.3});
+ if(e.type==='trash'){const shot=s.projectiles.at(-1),origin=s.projectileOrigin?.(e);shot.x=origin?.x??e.x;shot.z=origin?.z??e.z;shot.y=origin?.y??e.y+2.2;shot.ballistic=true;shot.vx=Math.sin(e.trashFacing)*e.launchSpeed;shot.vz=Math.cos(e.trashFacing)*e.launchSpeed;shot.vy=e.launchLift;}
  s.events.push('enemyShot');
 }
 function melee(s,e){
@@ -76,18 +84,19 @@ function melee(s,e){
 export function updateEnemy(s,e,dt,moveBody){
  const p=ENEMY_TYPES[e.type];if(!p)throw new Error(`Enemy ${e.id} has unsupported type ${e.type}`);
  e.age+=dt;e.timer-=dt;e.special-=dt;e.flash=Math.max(0,e.flash-dt);e.attack=Math.max(0,e.attack-dt);e.animation='idle';
+ if(e.type==='trash'){updateTrash(s,e,dt,fire);return;}
  const d=Math.hypot(s.player.x-e.x,s.player.z-e.z),visible=clearSegment(e,s.player,sightObstacles(s,e));
  e.hidden=false;e.shield=false;e.y=0;if(p.stationary&&e.anchor){e.x=e.anchor.x;e.z=e.anchor.z;}
  if(s.player.health<=0){e.animation='celebrate';return;}
  if(e.state==='down'){e.animation='knockdown';if(e.timer<=0)enter(e,'rise',1);return;}
  if(e.state==='rise'){e.animation='recover';if(e.timer<=0)enter(e,'pursue');return;}
  if(e.state==='stagger'){e.animation='hit';if(e.timer<=0)enter(e,p.stationary?'hidden':'pursue',p.stationary?.5:0);return;}
- if(e.state==='roll'){const side=e.side||1;move(s,e,{x:e.x+Math.cos(s.yaw)*4*side,z:e.z-Math.sin(s.yaw)*4*side},6,dt,moveBody);if(e.timer<=0){e.side=-side;enter(e,'patrol');}return;}
+ if(e.state==='roll'){e.animation='roll';const direction=e.rollDirection||{x:1,z:0};const travel=(4/1.1)*Math.min(dt,Math.max(0,e.timer+dt));moveBody(e,direction.x*travel,direction.z*travel,s.bounds,s.obstacles,.65);if(e.timer<=0)enter(e,'patrol');return;}
  if(e.state==='windup'){e.animation='attack';if(e.timer<=0){melee(s,e);enter(e,'recoverAttack',p.recovery);}return;}
  if(e.state==='recoverAttack'){e.animation='attack';if(e.timer<=0){if(e.type==='kart')enter(e,'escape',5+s.random()*5);else enter(e,'pursue');}return;}
  if(e.state==='fuse'){e.animation='hit';e.flash=.15;if(e.timer<=0){if(d<5&&visible)s.hurtPlayer(p.damage);s.effects.push({id:++s.effectId,x:e.x,z:e.z,y:1,radius:5,age:0,life:1,kind:'bomberBlast'});s.killEnemy(e,false);}return;}
  if(e.state==='throw'){
-  e.animation='attack';if(e.timer<=0){fire(s,e);e.shots++;if(e.shots<(p.burst||1))e.timer=p.shotDelay;else{e.shots=0;enter(e,p.stationary?'hidden':'coverWait',p.shotDelay+.3);}}return;
+  e.animation='attack';if(e.timer<=0){fire(s,e);e.shots++;if(e.shots<(p.burst||1))e.timer=p.shotDelay;else{e.shots=0;if(p.roll)beginSoldierRoll(s,e);else enter(e,p.stationary?'hidden':'coverWait',p.shotDelay+.3);}}return;
  }
  if(e.state==='hidden'){e.hidden=e.timer>0;if(e.timer<=0&&d<100&&visible){e.hidden=false;enter(e,'throw',.9);}return;}
  if(e.state==='teleport'){e.shield=true;e.hidden=e.timer<.5;e.animation='celebrate';if(e.timer<=0){relocate(s,e);e.special=8;enter(e,'pursue');}return;}
@@ -138,7 +147,13 @@ export function updateEnemy(s,e,dt,moveBody){
 }
 export function updateProjectiles(s,dt){
  s.projectiles=s.projectiles.filter(p=>{
-  const before={x:p.x,z:p.z};p.age+=dt;const t=Math.min(1,p.age/p.duration);
+  const before={x:p.x,y:p.y,z:p.z};p.age+=dt;const t=Math.min(1,p.age/p.duration);
+  if(p.ballistic){
+   p.x+=p.vx*dt;p.z+=p.vz*dt;p.y+=p.vy*dt-4.905*dt*dt;p.vy-=9.81*dt;
+   const obstacles=s.obstacles.filter(b=>!p.ignoredObstacles?.includes(b)&&(b.maxY===undefined||Math.min(before.y,p.y)+(s.floorY||0)<=b.maxY)&&(b.minY===undefined||Math.max(before.y,p.y)+(s.floorY||0)>=b.minY)),wall=!clearSegment(before,p,obstacles);
+   const playerHit=p.y>=s.player.y&&p.y<=s.player.y+2.4&&Math.hypot(p.x-s.player.x,p.z-s.player.z)<.8;
+   if(wall||playerHit||p.y<=0||p.age>=3){if(!wall&&(playerHit||Math.hypot(p.x-s.player.x,p.z-s.player.z)<p.radius&&s.player.y<1.5)&&clearSegment(p,s.player,obstacles))s.hurtPlayer(p.damage);s.effects.push({id:++s.effectId,x:p.x,z:p.z,y:Math.max(.2,p.y),radius:p.radius,age:0,life:.76,kind:'tomatoImpact'});return false;}return true;
+  }
   p.x=p.start.x+(p.target.x-p.start.x)*t;p.z=p.start.z+(p.target.z-p.start.z)*t;p.y=2.2*(1-t)+Math.sin(t*Math.PI)*(p.kind==='fireball'?0:3);
   const wall=!clearSegment(before,p,s.obstacles.filter(b=>!p.ignoredObstacles?.includes(b)));
   if(wall||t>=1){

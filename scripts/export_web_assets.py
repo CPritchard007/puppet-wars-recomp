@@ -122,6 +122,8 @@ def export(episode, scene_name, target_key=None):
         if n['active'] and bc and bc['m_Enabled'] and not bc['m_IsTrigger'] and go['m_Layer'] in (0,12,13,14):
             n['collider']={'size':list(bc['m_Size'].values()),'center':list(bc['m_Center'].values())}
         data['nodes'].append(n)
+    from destructible_metadata import attach_destructibles
+    attach_destructibles(data, docs)
     # Puppet skin and animations are shared via assets/puppet-rig.json.
     for name in ['puppetkid_UV_01.png','puppetkid_UV_01pink.png','puppetkid_UV_01green.png','01_Gun Idle.png','01_Gun Fire.png','01_Gun Reload 01.png','03sG_Gun Idle.png','03sG_Gun Fire.png','03sG_Gun Reload 01.png']:
         shutil.copyfile(base/'Texture2D'/name,target/name)

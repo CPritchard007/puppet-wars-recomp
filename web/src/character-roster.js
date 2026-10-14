@@ -2,11 +2,20 @@ import * as THREE from 'three';
 
 
 export function makeClips(rig){
- return Object.fromEntries(Object.entries(rig.clips).map(([state,clip])=>[state,new THREE.AnimationClip(state,clip.duration,clip.tracks.map(t=>{
-  if(!rig.nodes[t.node])throw new Error(`${rig.sourceRoot}: unbound ${state} animation`);
-  const Track=t.property==='quaternion'?THREE.QuaternionKeyframeTrack:THREE.VectorKeyframeTrack;
-  return new Track(`bone_${t.node}.${t.property}`,t.times,t.values);
- }))]));
+ const soldier=/SoldierShooter/.test(rig.sourceRoot);
+ return Object.fromEntries(Object.entries(rig.clips).map(([state,clip])=>{
+  // Source clips contain an out-and-back root translation. The simulation owns
+  // horizontal travel; keep the first roll and the shooting portion only.
+  const duration=soldier&&state==='roll'?1.1:soldier&&state==='throw'?1.5:clip.duration;
+  const tracks=clip.tracks.map(t=>{
+   if(!rig.nodes[t.node])throw new Error(`${rig.sourceRoot}: unbound ${state} animation`);
+   const values=[...t.values];
+   if(soldier&&['roll','throw'].includes(state)&&t.property==='position'&&rig.nodes[t.node].name==='RIG_P_ PelvisBone01')for(let i=0;i<values.length;i+=3){values[i]=values[0];values[i+2]=values[2];}
+   const Track=t.property==='quaternion'?THREE.QuaternionKeyframeTrack:THREE.VectorKeyframeTrack;
+   return new Track(`bone_${t.node}.${t.property}`,t.times,values);
+  });
+  return [state,new THREE.AnimationClip(state,duration,tracks).trim()];
+ }));
 }
 export class RecoveredCharacter extends THREE.Group{
  constructor(template){
@@ -31,6 +40,9 @@ export class RecoveredCharacter extends THREE.Group{
   const height=bounds.max.y-bounds.min.y;if(!Number.isFinite(height)||height<.001)throw new Error(`${this.name}: invalid skinned model bounds`);
   const scale=this.rig.height/height,[sx,,sz]=this.rig.proportions;this.display.scale.set(scale*sx,scale,scale*sz);
   this.display.position.set(-(bounds.min.x+bounds.max.x)*scale*sx/2,-bounds.min.y*scale,-(bounds.min.z+bounds.max.z)*scale*sz/2);
+  // This puppet is authored around a bin anchor, not its feet. Normalizing its
+  // crouched first frame lifts it out of the bin and magnifies the emergence.
+  if(this.modelType==='trash'){this.display.scale.fromArray(this.rig.sourceScale);this.display.position.set(0,0,0);}
   this.height=this.rig.height;this.update(0);
  }
  play(state,fade=.12,restart=false){
@@ -42,9 +54,11 @@ export class RecoveredCharacter extends THREE.Group{
  update(dt,state=this.state,hitVersion=this.hitVersion,event=this.lastEvent){
   if(this.disposed)return;
   if(state==='death')this.play('death',.08);
-  else if(hitVersion!==this.hitVersion){this.hitVersion=hitVersion;this.play('hit',.06,true);}
+  else if(state==='celebrate')this.play('celebrate',.3,event!==this.lastEvent);
+  else if(state==='roll')this.play('roll',.06,event!==this.lastEvent);
+  else if(hitVersion!==this.hitVersion&&state!=='roll'&&this.modelType!=='trash'){this.hitVersion=hitVersion;this.play('hit',.06,true);}
   else if(!(state==='cover'&&this.state==='throw'&&this.actions.throw.time<this.template.clips.throw.duration-.01)&&(this.state!=='hit'||this.actions.hit.time>=this.template.clips.hit.duration-.01))this.play(state,.12,event!==this.lastEvent);
-  this.lastEvent=event;
+  this.hitVersion=hitVersion;this.lastEvent=event;
   for(const m of this.meshes)if(m.userData.role==='umbrella')m.visible=state==='defend';
   this.mixer.update(Math.max(0,dt));this.updateMatrixWorld(true);for(const skeleton of this.skeletons)skeleton.update();
   for(const m of this.meshes)if(m.isSkinnedMesh){m.boundingBox=null;m.boundingSphere=null;}
@@ -76,6 +90,8 @@ export async function loadRoster(geometry,texture,onProgress){
   dispose(){for(const p of Object.values(projectiles))p.map.dispose();for(const resource of [...Object.values(templates),...Object.values(projectiles)])for(const p of resource.parts){p.geometry.dispose();for(const m of p.materials){m.map?.dispose();m.dispose();}}}};
 }
 export function characterAnimation(enemy,actor){
+ if(enemy.state==='victory')return enemy.animation;
+ if(enemy.type==='trash')return enemy.state==='trashShoot'?'throw':'idle';
  const state={throw:'throw',coverWait:'cover',windup:'attack',recoverAttack:'attack',fuse:'fuse',jump:'jump',roll:'roll',magic:'magic',teleport:'teleport',transform:'transform',defend:'defend',firebreath:'firebreath',charge:'charge',down:'knockdown',rise:'recover'}[enemy.state]||enemy.animation||'idle';
  if(actor.actions[state])return state;
  return actor.actions[enemy.animation]?enemy.animation:'idle';
@@ -83,6 +99,8 @@ export function characterAnimation(enemy,actor){
 
 // Keep the world-facing direction throughout falling, lying down and rising.
 export function characterFacing(enemy,player,current){
+ if(enemy.type==='trash'&&Number.isFinite(enemy.trashFacing))return enemy.trashFacing;
+ if((enemy.state==='roll'||enemy.animation==='roll')&&Number.isFinite(enemy.rollFacing))return enemy.rollFacing;
  if(enemy.animation==='death'||enemy.state==='down'||enemy.state==='rise'||enemy.animation==='knockdown'||enemy.animation==='recover')return current;
  return enemy.animation==='run'&&Number.isFinite(enemy.heading)?enemy.heading:Math.atan2(player.x-enemy.x,player.z-enemy.z);
 }

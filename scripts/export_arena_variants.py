@@ -1,5 +1,5 @@
 """Recover the three missing original day/night scenes; provide a relit parking day variant."""
-import json,copy
+import json
 from functools import lru_cache
 import export_web_assets as old
 from vr_assets import docs
@@ -26,10 +26,6 @@ def main():
   ids=set(base['spawnPoints']+base.get('trashSpawnPoints',[])+[t['destination'] for t in base['teleports']]);mapping={i:900000+i for i in ids}
   for i in ids:d['nodes'].append({'id':mapping[i],'parent':0,'name':'VR anchor '+str(i),'active':True,'layer':0,'position':position(i),'rotation':[0,0,0,1],'scale':[1,1,1]})
   d['spawnPoints']=[mapping[i] for i in base['spawnPoints']];d['trashSpawnPoints']=[mapping[i] for i in base.get('trashSpawnPoints',[])];d['teleports']=[dict(t,destination=mapping[t['destination']]) for t in base['teleports']]
-  # Retain source damage-state metadata where the prop is shared between variants.
-  byname={n['name']:n for n in base['nodes'] if n.get('destructible')}
-  for n in d['nodes']:
-   if n['name'] in byname:n['destructible']=copy.deepcopy(byname[n['name']]['destructible'])
   target.write_text(json.dumps(d,separators=(',',':')))
  # No parking day scene or day lightmap is present in the supplied releases.
  # Use its original geometry/albedo with neutral daylight in place of baked night lighting.

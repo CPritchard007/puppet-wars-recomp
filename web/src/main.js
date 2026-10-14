@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {DefeatPresentation} from './defeat.js';
 import { Input, PROFILES } from './input.js';
 import { characterAnimation,characterFacing } from './character-roster.js';
 import { EnemyEffects } from './enemy-effects.js';
@@ -17,6 +18,7 @@ let renderer;
 try{renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});}catch(error){throw new Error(`WebGL could not start. Enable hardware acceleration or try another browser. ${error.message}`);}
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.outputColorSpace=THREE.SRGBColorSpace;
 const camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.05,400);camera.rotation.order='YXZ';
+const defeat=new DefeatPresentation(camera);let deathClip=null;
 const stored=readSaved('puppet-web-settings-v1',{});
 const input=new Input(canvas,stored);input.onError=error=>reportError(error,{operation:'read controller',hint:'Check browser controller permissions. Keyboard and touch remain available.'});let volume=Number.isFinite(stored.volume)?stored.volume:.4;
 let showTouch=stored.showTouch??matchMedia('(pointer:coarse)').matches;
@@ -35,7 +37,7 @@ vr.supported().then(supported=>{$('#enter-vr').disabled=!supported;$('#enter-vr'
 $('#enter-vr').onclick=async()=>{try{if(mode==='loading')return;await vr.start();await startRun();$('#enter-vr').textContent='VR connected';}catch(error){reportError(error,{operation:'enter VR'});}};
 function resize(){if(renderer.xr.isPresenting)return;renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();weaponCanvas.width=innerWidth;weaponCanvas.height=innerHeight;}
 window.addEventListener('resize',resize);resize();
-function setMode(next){mode=next;setContext({phase:mode,episode});input.active=mode==='playing';$('#menu').hidden=!['menu','loading'].includes(mode);$('#pause-menu').hidden=!['paused','over'].includes(mode);$('#hud').hidden=!['playing','paused'].includes(mode);$('#crosshair').hidden=mode!=='playing';$('#pause').hidden=mode!=='playing';$('#touch-controls').hidden=mode!=='playing'||!showTouch;
+function setMode(next){if(next!=='over')defeat.stop();mode=next;document.body.dataset.mode=next;document.body.classList.toggle('touch-playing',showTouch&&next==='playing');setContext({phase:mode,episode});input.active=mode==='playing';$('#menu').hidden=!['menu','loading'].includes(mode);$('#pause-menu').hidden=!['paused','over'].includes(mode);$('#hud').hidden=!['playing','paused'].includes(mode);$('#crosshair').hidden=mode!=='playing';$('#pause').hidden=mode!=='playing';$('#touch-controls').hidden=mode!=='playing'||!showTouch;
   if(mode!=='playing'){input.clear();if(document.pointerLockElement)document.exitPointerLock();}
 }
 function pause(reason='Your run is waiting.'){if(mode!=='playing')return;$('#pause-title').textContent='Paused.';$('#pause-detail').textContent=reason;$('#resume').hidden=false;setMode('paused');$('#resume').focus();}
@@ -50,7 +52,8 @@ async function loadSounds(){soundBuffers={};if(!audio)return;await Promise.all([
  try{const url=`assets/episode-${Math.min(episode,2)}/${name}.wav`,res=await fetch(url,{signal:AbortSignal.timeout(15000)});if(!res.ok)throw new Error(`HTTP ${res.status} loading ${url}`);soundBuffers[name]=await audio.decodeAudioData(await res.arrayBuffer());}
  catch(error){reportError(error,{operation:`load ${name} audio`});}
 }));
- const extras={...await fetchJSON('assets/vr/weapons/audio.json'),mopHit:'assets/weapons/mop-hit.wav',mopMiss:'assets/weapons/mop-miss.wav'};await Promise.all(Object.entries(extras).map(async([name,url])=>{const res=await fetch(url);if(!res.ok)throw new Error(`HTTP ${res.status} loading ${url}`);soundBuffers[name]=await audio.decodeAudioData(await res.arrayBuffer());}));}
+ deathClip=await fetchJSON('assets/defeat/camera.json');
+ const extras={...await fetchJSON('assets/defeat/audio.json'),...await fetchJSON('assets/enemies/trash-audio/audio.json'),...await fetchJSON('assets/vr/weapons/audio.json'),...await fetchJSON('assets/extra-weapons/audio.json'),mopHit:'assets/weapons/mop-hit.wav',mopMiss:'assets/weapons/mop-miss.wav'};await Promise.all(Object.entries(extras).map(async([name,url])=>{const res=await fetch(url);if(!res.ok)throw new Error(`HTTP ${res.status} loading ${url}`);soundBuffers[name]=await audio.decodeAudioData(await res.arrayBuffer());}));}
 function sound(name){if(!audio||!soundBuffers[name]||volume<=0)return;const s=audio.createBufferSource(),gain=audio.createGain();s.buffer=soundBuffers[name];gain.gain.value=volume*.6;s.connect(gain);gain.connect(audio.destination);s.start();s.onended=()=>{s.disconnect();gain.disconnect();};}
 let loopSound=null,musicSound=null;
 function updateMusic(){
@@ -63,16 +66,18 @@ function updateLoopSound(){
  if(loopSound?.name!==name){if(loopSound){loopSound.source.stop();loopSound.source.disconnect();loopSound.gain.disconnect();loopSound=null;}if(name&&audio&&soundBuffers[name]){const source=audio.createBufferSource(),gain=audio.createGain();source.buffer=soundBuffers[name];source.loop=true;source.connect(gain);gain.connect(audio.destination);source.start();loopSound={name,source,gain};}}
  if(loopSound)loopSound.gain.gain.value=volume*.6;
 }
-function clearActors(){weaponEffects?.dispose();weaponEffects=null;enemyEffects?.dispose();enemyEffects=null;for(const m of enemyActors.values()){m.dispose();}enemyActors.clear();for(const m of pickupMeshes.values()){m.dispose();}pickupMeshes.clear();for(const m of decorative){m.dispose();}decorative=[];}
+function clearActors(){defeat.stop();weaponEffects?.dispose();weaponEffects=null;enemyEffects?.dispose();enemyEffects=null;for(const m of enemyActors.values()){m.dispose();}enemyActors.clear();for(const m of pickupMeshes.values()){m.dispose();}pickupMeshes.clear();for(const m of decorative){m.dispose();}decorative=[];}
 async function selectEpisode(ep){
+  const arena=ARENAS.find(a=>a.id===ep),periods=arena.periods||['day','night'];for(const option of $('#time-of-day').options)option.disabled=!periods.includes(option.value);if(!periods.includes($('#time-of-day').value))$('#time-of-day').value=arena.defaultPeriod;
   const token=++loadToken;episode=ep;setMode('loading');$('#play').disabled=true;$('#play').textContent='Loading original assets…';
   document.querySelectorAll('.map').forEach(b=>b.classList.toggle('selected',Number(b.dataset.episode)===ep));
   try{
     const next=await loadWorld(ep,text=>{if(token===loadToken)$('#loading-status').textContent=text;},$('#time-of-day').value);
     if(token!==loadToken){next.dispose();return;}
+    const extraClips=await fetchJSON('assets/extra-weapons/animations.json');
     const legacyClips=await fetchJSON('assets/weapons/animations.json'),vrClips=await fetchJSON('assets/vr/weapons/animations.json');
-    const clips=[...legacyClips.map(w=>Object.fromEntries(Object.entries(w).map(([k,frames])=>[k,Array.isArray(frames)?frames.map(f=>({...f,texture:'assets/weapons/'+f.texture})):frames]))),...WEAPONS.slice(3).map(w=>vrClips[w.id])];
-    const names=[...new Set(clips.flatMap(w=>Object.values(w).filter(Array.isArray).flat().map(f=>f.texture)))];
+    const clips=[...legacyClips.map(w=>Object.fromEntries(Object.entries(w).map(([k,frames])=>[k,Array.isArray(frames)?frames.map(f=>({...f,texture:'assets/weapons/'+f.texture})):frames]))),...WEAPONS.slice(3).map(w=>(vrClips[w.id]||extraClips[w.id]))];
+    const names=[...new Set(clips.flatMap(w=>Object.values(w).filter(Array.isArray).flat().concat(Object.values(w.left||{}).filter(Array.isArray).flat()).map(f=>f.texture)))];
     const loadedImages=await Promise.all(names.map(n=>loadImage(n)));
     if(token!==loadToken){next.dispose();return;}
     clearActors();vr.rig.removeFromParent();world?.dispose();world=next;vr.attach(world);weaponClips=clips;images=Object.fromEntries(names.map((n,i)=>[n,loadedImages[i]]));
@@ -81,9 +86,9 @@ async function selectEpisode(ep){
     setMode('menu');$('#play').disabled=false;$('#play').textContent='Enter the arena →';$('#loading-status').textContent=`Ready · ${ARENAS.find(a=>a.id===ep).name} · ${world.timeOfDay==='day'?'Day':'Night'} · Best ${best.toLocaleString()}`;
   }catch(error){if(token!==loadToken)return;reportError(error,{operation:'load arena',episode:ep});$('#play').textContent='Loading failed';$('#loading-status').textContent='See Diagnostics for details. Select an arena to retry.';}
 }
-function runOptions(){const options={...world,encounterMode:$('#encounter-mode').value,startingWeapon:Number($('#starting-weapon').value)||0};if($('#loadout-mode').value==='vr'){options.loadout=[Math.random()<.6?3:4,Math.random()<.5?5:6,Math.random()<.5?7:8];options.startingWeapon=options.loadout[0];}return options;}
+function runOptions(){const options={...world,projectileOrigin(e){const actor=enemyActors.get(e.id),node=actor?.nodes[actor.rig.nodes.findIndex(n=>n.name==='enemyPosition')];if(!node)return null;const p=node.getWorldPosition(new THREE.Vector3());return {x:p.x,y:p.y-world.floorY,z:p.z};},encounterMode:$('#encounter-mode').value,startingWeapon:Number($('#starting-weapon').value)||0};if($('#loadout-mode').value==='vr'){options.loadout=[Math.random()<.6?3:4,Math.random()<.5?5:6,Math.random()<.5?7:8];options.startingWeapon=options.loadout[0];}return options;}
 async function startRun(){
-  if(!world||mode==='loading'||starting)return;starting=true;$('#play').disabled=true;$('#restart').disabled=true;$('#loading-status').textContent='Preparing sound and starting the run…';
+  if(!world||mode==='loading'||starting)return;starting=true;if(showTouch&&!vr.active&&!document.fullscreenElement&&document.documentElement.requestFullscreen){document.documentElement.requestFullscreen({navigationUI:'hide'}).then(()=>screen.orientation?.lock?.('landscape')).catch(()=>{});}$('#play').disabled=true;$('#restart').disabled=true;$('#loading-status').textContent='Preparing sound and starting the run…';
   try{await unlockAudio();await loadSounds();clearActors();world.resetScenery();sim=new Simulation(runOptions());sim.floorY=world.floorY;enemyEffects=new EnemyEffects(world.scene,world.roster.projectiles);weaponEffects=new WeaponEffects(world.scene,world.flameMap);hasPlayed=true;setMode('playing');if(!$('#diagnostics').hidden)pause('An error was reported while starting. Review Diagnostics, then resume.');else await lockMouse();}
   catch(error){reportError(error,{operation:'start run'});}
   finally{starting=false;$('#play').disabled=false;$('#restart').disabled=false;}
@@ -93,7 +98,7 @@ $('#play').onclick=startRun;$('#restart').onclick=startRun;
 $('#resume').onclick=async()=>{setMode('playing');await unlockAudio();await lockMouse();};
 $('#pause').onclick=()=>pause();$('#main-menu').onclick=()=>selectEpisode(episode);
 $('#reload-app').onclick=()=>location.reload();
-document.querySelector('.map-options').innerHTML=ARENAS.map(a=>`<button class="map" data-episode="${a.id}"><small>VR ARENA ${String(a.id).padStart(2,'0')}</small><strong>${a.name}</strong><span>${a.description}</span></button>`).join('');
+document.querySelector('.map-options').innerHTML=ARENAS.map(a=>`<button class="map" data-episode="${a.id}"><small>ARENA ${String(a.id).padStart(2,'0')}</small><strong>${a.name}</strong><span>${a.description}</span></button>`).join('');
 WEAPONS.forEach((w,i)=>$('#starting-weapon').add(new Option(w.name,i)));
 $('#pause-loadout').onclick=()=>{sim.switchWeapon();$('#pause-detail').textContent=`Selected ${sim.weapon.name}. Press Change weapon again to cycle.`;updateHUD();};
 document.querySelectorAll('[data-episode]').forEach(b=>b.onclick=()=>selectEpisode(Number(b.dataset.episode)));
@@ -101,31 +106,31 @@ function openSettings(){previousMode=mode;if(mode==='playing')pause();$('#settin
 $('#settings-open').onclick=openSettings;$('#pause-settings').onclick=openSettings;
 function closeSettings(){storeSettings();$('#settings').hidden=true;if(previousMode==='playing')setMode('paused');if(mode==='menu')$('#play').focus();else $('#resume').focus();}
 $('#settings-close').onclick=closeSettings;
-function storeSettings(){save('puppet-web-settings-v1',{bindings:input.bindings,deadzone:input.deadzone,sensitivity:input.sensitivity,invertY:input.invertY,volume,showTouch,profile:$('#profile').value});}
+function storeSettings(){save('puppet-web-settings-v1',{bindings:input.bindings,deadzone:input.deadzone,sensitivity:input.sensitivity,invertY:input.invertY,volume,showTouch,leftHanded:input.leftHanded,touchExtended:$('#touch-extended').checked,profile:$('#profile').value});}
 const labels={teleport:'Teleport',fire:'Fire',aim:'Aim',reload:'Reload',switch:'Switch weapon',jump:'Jump',pause:'Pause',moveX:'Move X axis',moveY:'Move Y axis',lookX:'Look X axis',lookY:'Look Y axis'};
 for(const [key,label]of Object.entries(labels)){const row=document.createElement('label');row.textContent=label;const select=document.createElement('select');select.dataset.binding=key;const axis=key.endsWith('X')||key.endsWith('Y');for(let i=0;i<(axis?12:32);i++){const option=new Option(`${axis?'Axis':'Button'} ${i}`,i);select.add(option);}select.value=input.bindings[key];select.onchange=()=>{input.bindings[key]=Number(select.value);$('#profile').value='custom';storeSettings();};row.append(select);$('#bindings').append(row);}
 $('#profile').value=stored.profile||'standard';$('#profile').onchange=e=>{if(PROFILES[e.target.value]){input.bindings={...PROFILES[e.target.value]};document.querySelectorAll('[data-binding]').forEach(s=>s.value=input.bindings[s.dataset.binding]);}storeSettings();};
 for(const [id,key]of [['sensitivity','sensitivity'],['deadzone','deadzone']]){const el=$('#'+id);el.value=input[key];el.oninput=()=>{input[key]=Number(el.value);storeSettings();};}
-$('#volume').value=volume;$('#volume').oninput=e=>{volume=Number(e.target.value);storeSettings();};$('#invert').checked=input.invertY;$('#invert').onchange=e=>{input.invertY=e.target.checked;storeSettings();};$('#touch-toggle').checked=showTouch;$('#touch-toggle').onchange=e=>{showTouch=e.target.checked;storeSettings();};
+$('#volume').value=volume;$('#volume').oninput=e=>{volume=Number(e.target.value);storeSettings();};$('#invert').checked=input.invertY;$('#invert').onchange=e=>{input.invertY=e.target.checked;storeSettings();};$('#touch-left').checked=input.leftHanded;$('#touch-extended').checked=stored.touchExtended??false;function touchLayout(){document.body.classList.toggle('touch-left',input.leftHanded);document.body.classList.toggle('touch-extended',$('#touch-extended').checked);}touchLayout();$('#touch-left').onchange=e=>{input.clear();input.leftHanded=e.target.checked;touchLayout();storeSettings();};$('#touch-extended').onchange=()=>{touchLayout();storeSettings();};$('#touch-toggle').checked=showTouch;$('#touch-toggle').onchange=e=>{showTouch=e.target.checked;storeSettings();};
 function aimRay(x=0,y=0){if(vr.active){vr.aim(ray);if(x||y)ray.ray.direction.add(new THREE.Vector3(x,y,0)).normalize();}else ray.setFromCamera(new THREE.Vector2(x,y),camera);}
-function weaponMuzzle(){
- const p=muzzlePixel(sim.weapon.id,innerWidth,innerHeight);
+function weaponMuzzle(mirror=false){
+ const p=muzzlePixel(sim.weapon.id,innerWidth,innerHeight);if(mirror)p.x=innerWidth-p.x;
  if(vr.active){vr.weapon.updateWorldMatrix(true,false);return vr.weapon.localToWorld(new THREE.Vector3((p.x/innerWidth-.5)*1.1,(.5-p.y/innerHeight)*.7,0));}
  const direction=new THREE.Vector3(p.x/innerWidth*2-1,1-p.y/innerHeight*2,.5).unproject(camera).sub(camera.position).normalize();
  const forward=camera.getWorldDirection(new THREE.Vector3());return camera.position.clone().addScaledVector(direction,3/direction.dot(forward));
 }
 function shoot(){
-  if(!sim.shot())return;shotFlash=.14;input.rumble();if(!sim.weapon.continuous&&sim.weapon.id!=='mop')sound(sim.weapon.id|| (sim.weaponIndex===1?'shotgun':'shot'));
+  if(!sim.shot())return;shotFlash=.14;input.rumble();if(!sim.weapon.continuous&&!sim.weapon.hitDelay)sound(sim.weapon.id|| (sim.weaponIndex===1?'shotgun':'shot'));
   if(sim.weapon.perk)return;
-  if(sim.weapon.id==='mop'){aimRay();sim.pendingAttacks.at(-1).direction=ray.ray.direction.clone();return;}
+  if(sim.weapon.hitDelay){aimRay();sim.pendingAttacks.at(-1).direction=ray.ray.direction.clone();return;}
   const meshes=[...enemyActors.values()].filter(actor=>actor.state!=='death'&&actor.visible).flatMap(actor=>actor.meshes.filter(m=>m.visible));
-  aimRay();weaponEffects?.emit(sim.weapon,ray.ray,world.staticMeshes,meshes,weaponMuzzle());
+  aimRay();weaponEffects?.emit(sim.weapon,ray.ray,world.staticMeshes,meshes,weaponMuzzle());if(sim.weapon.dual)weaponEffects?.emit(sim.weapon,ray.ray,world.staticMeshes,meshes,weaponMuzzle(true));
   if(sim.weapon.cone){
     aimRay();const origin=ray.ray.origin.clone(),forward=ray.ray.direction.clone();
     for(const e of sim.enemies){if(e.hidden)continue;const delta=new THREE.Vector3(e.x-origin.x,world.floorY+1.5-origin.y,e.z-origin.z),distance=delta.length();if(distance>sim.weapon.range||delta.normalize().dot(forward)<Math.cos(sim.weapon.cone))continue;ray.set(origin,delta);ray.far=distance;const wall=ray.intersectObjects(world.staticMeshes,false)[0];if(wall&&wall.distance<distance-.1)continue;if(sim.damageEnemy(e,sim.weapon.damage)){e.burning=sim.weapon.burn||0;hitMarker=.18;}}return;
   }
   for(let pellet=0;pellet<sim.weapon.pellets;pellet++){
-    const spread=sim.weapon.pellets===1?0:.065;aimRay((Math.random()-.5)*spread,(Math.random()-.5)*spread);ray.far=sim.weapon.range;
+    const spread=sim.weapon.pellets===1||sim.weapon.dual?0:.065;aimRay((Math.random()-.5)*spread,(Math.random()-.5)*spread);ray.far=sim.weapon.range;if(sim.weapon.dual)ray.ray.origin.addScaledVector(new THREE.Vector3().crossVectors(ray.ray.direction,new THREE.Vector3(0,1,0)).normalize(),pellet===0?.35:-.35);
     const hit=ray.intersectObjects(meshes,false)[0];
     const wall=ray.intersectObjects(world.staticMeshes,false)[0];if(wall&&(!hit||wall.distance<hit.distance-.1)){world.damageScenery(wall,sim.weapon.damage);continue;}if(!hit)continue;
     const enemy=sim.enemies.find(e=>e.id===hit.object.userData.enemyId);if(enemy&&sim.damageEnemy(enemy,sim.weapon.damage)){if(sim.weapon.push&&enemy.type!=='trash'){const direction=ray.ray.direction;moveBody(enemy,direction.x*sim.weapon.push*.05,direction.z*sim.weapon.push*.05,sim.bounds,sim.obstacles,.7);}hitMarker=.18;sound('hit');}
@@ -149,17 +154,24 @@ function updateActors(dt){
   const picks=new Set(sim.pickups);for(const[p,m]of pickupMeshes)if(!picks.has(p)){m.dispose();pickupMeshes.delete(p);}
   for(const p of sim.pickups){let m=pickupMeshes.get(p);if(!m){m=new PickupSprite(p.kind,world.pickups[p.kind]);world.scene.add(m);pickupMeshes.set(p,m);}m.position.set(p.x,world.floorY+1+Math.sin(sim.time*3)*.2,p.z);m.animate(sim.time);}
 }
-function drawWeapon(){ctx.clearRect(0,0,innerWidth,innerHeight);if(!hasPlayed||!['playing','paused','over'].includes(mode)||!sim)return;
+function drawWeapon(){ctx.clearRect(0,0,innerWidth,innerHeight);if(!hasPlayed||!['playing','paused'].includes(mode)||!sim)return;
   weaponVisual=weaponFrame(weaponClips[sim.weaponIndex],sim);
-  const image=images[weaponVisual.texture];if(!image)throw new Error(`Missing weapon atlas: ${weaponVisual.texture}`);
-  const [u,v,uw,vh]=weaponVisual.uv,[left,top,right,bottom]=weaponVisual.bounds;
+  $('#crosshair').hidden=mode!=='playing'||weaponVisual.state==='scopeAim';
+  if(weaponVisual.state==='scopeAim'&&!vr.active){const image=images[weaponVisual.texture];const size=Math.max(innerWidth,innerHeight);ctx.drawImage(image,(innerWidth-size)/2,(innerHeight-size)/2,size,size);return;}
+  const visuals=[weaponVisual];if(weaponClips[sim.weaponIndex].left)visuals.push({...weaponFrame(weaponClips[sim.weaponIndex].left,sim),mirror:true});
+  for(const visual of visuals){
+  const image=images[visual.texture];if(!image)throw new Error(`Missing weapon atlas: ${weaponVisual.texture}`);
+  const [u,v,uw,vh]=visual.uv,[left,top,right,bottom]=visual.bounds;
   // PackedSprite trims each frame. Its original normalized bounds preserve the
   // hands' placement across atlases; Unity UVs have a bottom-left origin.
   const {halfH,halfW,baseY}=weaponLayout(innerWidth,innerHeight);
+  ctx.save();if(visual.mirror){ctx.translate(innerWidth,0);ctx.scale(-1,1);}
   ctx.drawImage(image,Math.round(u*image.width),Math.round((1-v-vh)*image.height),Math.round(uw*image.width),Math.round(vh*image.height),
-    innerWidth/2+left*halfW,baseY-top*halfH,(right-left)*halfW,(top-bottom)*halfH);
+    innerWidth/2+left*halfW,baseY-top*halfH,(right-left)*halfW,(top-bottom)*halfH);ctx.restore();
+  }
 }
-function updateHUD(){const i=sim.weaponIndex;$('#health').textContent=Math.ceil(sim.player.health);$('#health-fill').style.width=sim.player.health+'%';$('#ammo').innerHTML=sim.weapon.melee?'∞':sim.weapon.perk?(sim.perkTimers[i]>0?`${Math.ceil(sim.perkTimers[i])}s`:'READY'):`${Math.floor(sim.ammo[i])} <small>/ ${sim.reserve[i]}</small>`;$('#weapon-name').textContent=sim.weapon.name;$('#wave').textContent=`WAVE ${String(Math.max(1,sim.wave)).padStart(2,'0')}`;$('#remaining').textContent=sim.enemies.length?`${sim.enemies.length} PUPPETS LEFT`:`NEXT WAVE IN ${Math.ceil(sim.nextWave)}`;$('#score').textContent=`${sim.score.toLocaleString()} POINTS`;$('#reload-status').textContent=sim.weapon.melee?(input.pad?`MELEE · SWITCH · B${input.bindings.switch}`:'MELEE · Q · SWITCH'):sim.reloading?`RELOADING ${sim.reloading.toFixed(1)}s`:input.pad?`RELOAD · B${input.bindings.reload}   SWITCH · B${input.bindings.switch}`:'R · RELOAD   Q · SWITCH';$('#hit-screen').style.opacity=sim.hurt;$('#crosshair').classList.toggle('hit',hitMarker>0);}
+const hudWeaponIcons=["weapon-1","weapon-3","weapon-7","extra-20","extra-18","weapon-9","extra-25","extra-27","extra-28","extra-21","weapon-2","weapon-4","weapon-8","weapon-10","extra-22"];
+function updateHUD(){document.querySelector('[data-touch=aim]').hidden=!sim.weapon.scopeFov;const i=sim.weaponIndex;const icon=$('#weapon-icon');const iconPath=`assets/hud/${hudWeaponIcons[i]}.png`;if(icon.getAttribute("src")!==iconPath)icon.src=iconPath;$('#health').textContent=Math.ceil(sim.player.health);$('#health-fill').style.width=sim.player.health+'%';$('#ammo').innerHTML=sim.weapon.melee?'∞':sim.weapon.perk?(sim.perkTimers[i]>0?`${Math.ceil(sim.perkTimers[i])}s`:'READY'):`${Math.floor(sim.ammo[i])} <small>/ ${sim.reserve[i]}</small>`;$('#weapon-name').textContent=sim.weapon.name;$('#wave').textContent=`WAVE ${String(Math.max(1,sim.wave)).padStart(2,'0')}`;$('#remaining').textContent=sim.waveQueue.length?`${sim.enemies.length} ACTIVE · ${sim.waveQueue.length} INCOMING`:sim.enemies.length?`${sim.enemies.length} PUPPETS LEFT`:`NEXT WAVE IN ${Math.ceil(sim.nextWave)}`;$('#score').textContent=`${sim.score.toLocaleString()} POINTS`;$('#reload-status').textContent=sim.weapon.melee?(input.pad?`MELEE · SWITCH · B${input.bindings.switch}`:'MELEE · Q · SWITCH'):sim.reloading?`RELOADING ${sim.reloading.toFixed(1)}s`:input.pad?`RELOAD · B${input.bindings.reload}   SWITCH · B${input.bindings.switch}`:'R · RELOAD   Q · SWITCH';$('#hit-screen').style.opacity=sim.hurt;$('#crosshair').classList.toggle('hit',hitMarker>0);}
 $('#show-errors').addEventListener('click',()=>{if(!$('#diagnostics').hidden)pause('Diagnostics are open.');});
 let lastMenuNav=0,frameCount=0;
 function menuGamepad(state,now){
@@ -189,12 +201,13 @@ function frame(now){
   else if(mode!=='playing')menuGamepad(state,now);
   if(mode==='playing'&&$('#settings').hidden){
     if($('#auto-fire').checked||vr.active){aimRay();ray.far=sim.weapon.range;const hit=ray.intersectObjects([...enemyActors.values()].filter(a=>a.visible&&a.state!=='death').flatMap(a=>a.meshes),false)[0],wall=ray.intersectObjects(world.staticMeshes,false)[0];state.fire=state.fire||!!(hit&&(!wall||wall.distance>=hit.distance));}
-    sim.update(dt,state);if(!vr.active){camera.position.set(sim.player.x,world.eyeHeight+sim.player.y,sim.player.z);camera.rotation.set(sim.pitch,sim.yaw,0);camera.fov=state.aim?43:65;camera.updateProjectionMatrix();camera.updateMatrixWorld();}else vr.sync(sim,world);
+    sim.update(dt,state);if(!vr.active){camera.position.set(sim.player.x,world.eyeHeight+sim.player.y,sim.player.z);camera.rotation.set(sim.pitch,sim.yaw,0);camera.fov=sim.weapon.scopeFov?(sim.scopeAge>=.5?sim.weapon.scopeFov:65):(state.aim?43:65);camera.updateProjectionMatrix();camera.updateMatrixWorld();}else vr.sync(sim,world);
     weaponEffects?.update(dt,world.staticMeshes);updateActors(dt);enemyEffects?.update(sim,enemyActors);if(state.fire)shoot();
-    for(const event of sim.events){if(event==='mopHit'){hitMarker=.18;sound('mopHit');}if(event==='mopMiss')sound('mopMiss');if(['reload','hurt','pickup'].includes(event))sound(event);if(event==='over'){
-      best=Math.max(best,sim.score);save('puppet-web-best-v1',best);$('#pause-title').textContent='That’s a wrap.';$('#pause-detail').textContent=`${sim.score} points · ${sim.kills} puppets · ${Math.floor(sim.time)} seconds · ${sim.shotsFired} attacks · Wave ${sim.wave} · Best ${best}`;$('#resume').hidden=true;setMode('over');$('#restart').focus();}}
+    for(const event of sim.events){if(typeof event==='string'&&event.startsWith('trash'))sound(event);if(event==='mopHit'){hitMarker=.18;sound('mopHit');}if(event==='mopMiss')sound('mopMiss');if(['batHit','axeHit'].includes(event)){hitMarker=.18;sound(event.slice(0,-3));}if(['batMiss','axeMiss'].includes(event))sound(event.slice(0,-4)+'Reload');if(['reload','hurt','pickup'].includes(event))sound(event==='reload'&&soundBuffers[sim.weapon.id+'Reload']?sim.weapon.id+'Reload':event);if(event==='over'){
+      best=Math.max(best,sim.score);save('puppet-web-best-v1',best);$('#pause-title').textContent='That’s a wrap.';$('#pause-detail').textContent=`${sim.score} points · ${sim.kills} puppets · ${Math.floor(sim.time)} seconds · ${sim.shotsFired} attacks · Wave ${sim.wave} · Best ${best}`;$('#resume').hidden=true;setMode('over');defeat.start(sim,deathClip);sound('playerDeath');$('#pause-menu').hidden=true;}}
     sim.events=[];shotFlash=Math.max(0,shotFlash-dt);hitMarker=Math.max(0,hitMarker-dt);updateHUD();
   }
+  if(mode==='over'&&sim){sim.updateDefeat(dt);updateActors(dt);enemyEffects?.update(sim,enemyActors);defeat.update(dt,sim,{audio,buffers:soundBuffers,volume,vr:vr.active});if(sim.defeatAge>=1.2&&$('#pause-menu').hidden){$('#pause-menu').hidden=false;$('#restart').focus();}}
   if(mode==='menu'&&world&&!vr.active){camera.position.set(world.spawn.x,world.eyeHeight,world.spawn.z);camera.rotation.set(-.03,-.15+Math.sin(now*.0001)*.07,0);for(const actor of decorative)actor.update(dt);}
   updateLoopSound();updateMusic();
   if(world){vr.update(dt,sim,mode,state.pressed.teleport);drawWeapon();if(hasPlayed&&['playing','paused','over'].includes(mode))drawFishSplat(ctx,world.roster.projectiles.fishSplat,sim?.fishSplat,innerWidth,innerHeight);renderer.render(world.scene,camera);}
@@ -202,5 +215,5 @@ function frame(now){
 }
 renderer.setAnimationLoop(frame);
 // Read-only state makes bug reports and smoke tests reproducible without a hidden cheat mode.
-window.puppetDebug={getState:()=>({frame:frameCount,mode,episode,weaponEffects:weaponEffects?.snapshot(),trashSites:world?.trashSpawnPoints,vr:vr.active,perkTimers:sim?.perkTimers,cakes:sim?.cakes.map(c=>({x:c.x,z:c.z,landed:c.landed,fuse:c.fuse})),arena:world?.arena.key,timeOfDay:world?.timeOfDay,variantNote:world?.variantNote,teleports:world?.teleports,encounterMode:sim?.encounterMode,health:sim?.player.health,position:sim?{...sim.player}:null,yaw:sim?.yaw,ammo:sim?[...sim.ammo]:[],reloading:sim?.reloading,weapon:sim?.weaponIndex,weaponAnimation:weaponVisual?{state:weaponVisual.state,index:weaponVisual.index,texture:weaponVisual.texture}:null,wave:sim?.wave,enemies:sim?.enemies.length,corpses:sim?.corpses.length,animations:[...enemyActors.values(),...decorative].map(actor=>actor.snapshot()),targets:sim?.enemies.map(e=>({id:e.id,x:e.x,z:e.z,health:e.health,type:e.type,state:e.state,shield:e.shield,form:e.form})),projectiles:sim?.projectiles.map(p=>({kind:p.kind,x:p.x,y:p.y,z:p.z})),pickups:sim?.pickups.map(p=>({...p})),money:sim?.money,score:sim?.score,gamepad:input.pad?.id,meshes:world?.staticMeshes.length,bounds:world?.bounds})};
+window.puppetDebug={getState:()=>({frame:frameCount,mode,episode,weaponEffects:weaponEffects?.snapshot(),trashSites:world?.trashSpawnPoints,vr:vr.active,perkTimers:sim?.perkTimers,cakes:sim?.cakes.map(c=>({x:c.x,z:c.z,landed:c.landed,fuse:c.fuse})),arena:world?.arena.key,timeOfDay:world?.timeOfDay,variantNote:world?.variantNote,teleports:world?.teleports,encounterMode:sim?.encounterMode,health:sim?.player.health,position:sim?{...sim.player}:null,yaw:sim?.yaw,ammo:sim?[...sim.ammo]:[],reloading:sim?.reloading,weapon:sim?.weaponIndex,weaponAnimation:weaponVisual?{state:weaponVisual.state,index:weaponVisual.index,texture:weaponVisual.texture}:null,wave:sim?.wave,incoming:sim?.waveQueue.length,enemies:sim?.enemies.length,corpses:sim?.corpses.length,animations:[...enemyActors.values(),...decorative].map(actor=>actor.snapshot()),targets:sim?.enemies.map(e=>({id:e.id,x:e.x,z:e.z,health:e.health,type:e.type,state:e.state,shield:e.shield,form:e.form})),projectiles:sim?.projectiles.map(p=>({kind:p.kind,x:p.x,y:p.y,z:p.z})),pickups:sim?.pickups.map(p=>({...p})),money:sim?.money,score:sim?.score,gamepad:input.pad?.id,meshes:world?.staticMeshes.length,bounds:world?.bounds})};
 await selectEpisode(1);

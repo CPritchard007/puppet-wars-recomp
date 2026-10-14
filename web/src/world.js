@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import {townTrashSites} from './trash-enemy.js';
+import {floorSupportsSpawn} from './spawn-surface.js';
 import { fetchJSON } from './diagnostics.js';
 import { loadRoster } from './character-roster.js';
 import { damageSection } from './destructibles.js';
@@ -54,7 +56,7 @@ export async function loadWorld(episode,onProgress,period){
     if(box.max.y<spawn3.y-1.4||box.min.y>spawn3.y+.5)continue;
     if(box.max.x-box.min.x>bounds.maxX-bounds.minX-2&&box.max.z-box.min.z>bounds.maxZ-bounds.minZ-2)continue;
     if(box.containsPoint(spawn3))continue;
-    obstacles.push({nodeId:n.id,minX:box.min.x-.05,maxX:box.max.x+.05,minZ:box.min.z-.05,maxZ:box.max.z+.05});
+    obstacles.push({nodeId:n.id,minY:box.min.y,maxY:box.max.y,minX:box.min.x-.05,maxX:box.max.x+.05,minZ:box.min.z-.05,maxZ:box.max.z+.05});
   }
   const originalObstacles=obstacles.map(o=>({...o}));
   const pickupData=await fetchJSON('assets/pickups/pickups.json');const pickups=Object.fromEntries(await Promise.all(Object.entries(pickupData).map(async([kind,data])=>[kind,{...data,map:await texture(data.texture)}])));
@@ -66,8 +68,14 @@ export async function loadWorld(episode,onProgress,period){
   const teleports=data.teleports.map(t=>({...positionOf(t.destination),rotation:-t.rotation*Math.PI/180})).filter(t=>Number.isFinite(t.x));
   const spawnPoints=data.spawnPoints.map(positionOf).filter(Boolean);
   const trashSpawnPoints=(data.trashSpawnPoints||[]).map(id=>({...positionOf(id),id:`trash-${id}`})).filter(p=>Number.isFinite(p.x));
+  const canOccupySpawn=arena.key==='corridor'?floorSupportsSpawn(staticMeshes.filter(m=>/floor/i.test(m.parent.name)),floorY):()=>true;
+  const trashParent=nodes.get(data.nodes.find(n=>data.trashSpawnPoints?.includes(n.id))?.parent);
+  const trashSitesForPlayer=arena.key==='town'&&trashParent?player=>{
+    const local=trashParent.worldToLocal(new THREE.Vector3(player.x,floorY,player.z));
+    return townTrashSites(local).map((point,i)=>{const p=trashParent.localToWorld(new THREE.Vector3(...point));return {x:p.x,y:p.y,z:p.z,id:`town-bin-${point[0]}-${point[2]}`};});
+  }:null;
   const spawnRay=new THREE.Raycaster(),spawnOrigin=new THREE.Vector3(),spawnDirection=new THREE.Vector3();
-  return {pickups,timeOfDay:period,variantNote:data.variantNote||null,flameMap,arena,teleports,spawnPoints,trashSpawnPoints,originalEnemyNames:data.enemyTypes,scene,root,spawn:{x:spawn3.x,z:spawn3.z},eyeHeight:spawn3.y,floorY,bounds,obstacles,coverPoints:data.nodes.filter(n=>n.active&&/^CoverPosition/.test(n.name)).map(n=>{const p=nodes.get(n.id).getWorldPosition(new THREE.Vector3());return {x:p.x,z:p.z};}),staticMeshes,enemyGroup,roster,
+  return {deathDurations:Object.fromEntries(Object.entries(roster.templates).map(([key,t])=>[key,t.clips.death.duration])),trashSitesForPlayer,canOccupySpawn,pickups,timeOfDay:period,variantNote:data.variantNote||null,flameMap,arena,teleports,spawnPoints,trashSpawnPoints,originalEnemyNames:data.enemyTypes,scene,root,spawn:{x:spawn3.x,z:spawn3.z},eyeHeight:spawn3.y,floorY,bounds,obstacles,coverPoints:data.nodes.filter(n=>n.active&&/^CoverPosition/.test(n.name)).map(n=>{const p=nodes.get(n.id).getWorldPosition(new THREE.Vector3());return {x:p.x,z:p.z};}),staticMeshes,enemyGroup,roster,
     resetScenery(){obstacles.splice(0,obstacles.length,...originalObstacles.map(o=>({...o})));for(const m of destructibles){const d=m.userData.destructible;d.health=[...d.initial];m.geometry.copy(d.original);}},
     damageScenery(hit,damage){
       const m=hit.object,d=m.userData.destructible;if(!d)return false;

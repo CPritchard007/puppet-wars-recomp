@@ -1,12 +1,14 @@
 # Puppet War FPS recovery
 
-The playable browser build now includes the VR 2.0.1 release's four arenas
-(studio, lobby, town at night and parking), six additional weapons/specials,
+The playable browser build now includes six arenas (studio, lobby, town,
+parking, Christmas snow set and corridor), fifteen weapons/specials,
 original VR survival progression and a WebXR entry point. Generic remappable
 gamepads, keyboard/mouse, touch and visible error diagnostics remain supported.
 
 Run `npm --prefix web run dev` and open http://127.0.0.1:5173.
 See [web instructions](web/README.md) and the [VR recovery and fidelity notes](docs/vr-port.md).
+See the [content audit](docs/content-audit.md) for newly recovered sets, dual Uzis,
+and the confirmed content still awaiting a port.
 Physical headset testing and full original campaign parity are not established.
 
 ## Recovered files

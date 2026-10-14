@@ -1,0 +1,21 @@
+{
+  "gruntLaugh": "assets/defeat/puppet_LaughGas01.wav",
+  "fastLaugh": "assets/defeat/puppet_LaughGas01.wav",
+  "chickenLaugh": "assets/defeat/puppet_LaughGas01.wav",
+  "fishLaugh": "assets/defeat/puppet_LaughGas01.wav",
+  "bomberLaugh": "assets/defeat/puppet_LaughGas01.wav",
+  "strongLaugh": "assets/defeat/puppet_Boxer_Laugh.wav",
+  "ninjaLaugh": "assets/defeat/puppet_LaughGas01.wav",
+  "zombieLaugh": "assets/defeat/puppet_LaughGas01.wav",
+  "soldierLaugh": "assets/defeat/puppet_LaughGas01.wav",
+  "trashLaugh": "assets/defeat/puppet_LaughGas01.wav",
+  "magicianLaugh": "assets/defeat/puppet_LaughGas01.wav",
+  "bossLaugh": "assets/defeat/puppet_Boxer_Laugh.wav",
+  "clownLaugh": "assets/defeat/clown_winning.wav",
+  "elfLaugh": "assets/defeat/puppet_LaughGas01.wav",
+  "vampireLaugh": "assets/defeat/vampire_laugh.wav",
+  "playerDeath": "assets/defeat/hero_Fall.wav",
+  "crowdLaugh": "assets/defeat/puppet_Winning11khz.wav",
+  "batLaugh": "assets/defeat/puppet_Winning11khz.wav",
+  "kartLaugh": "assets/defeat/puppet_Winning11khz.wav"
+}

@@ -1,0 +1,14 @@
+{
+  "sniper": "assets/extra-weapons/sniper.wav",
+  "sniperReload": "assets/extra-weapons/sniperReload.wav",
+  "dualuzis": "assets/extra-weapons/dualuzis.wav",
+  "dualuzisReload": "assets/extra-weapons/dualuzisReload.wav",
+  "smg": "assets/extra-weapons/smg.wav",
+  "smgReload": "assets/extra-weapons/smgReload.wav",
+  "m60": "assets/extra-weapons/m60.wav",
+  "m60Reload": "assets/extra-weapons/m60Reload.wav",
+  "bat": "assets/extra-weapons/bat.wav",
+  "batReload": "assets/extra-weapons/batReload.wav",
+  "axe": "assets/extra-weapons/axe.wav",
+  "axeReload": "assets/extra-weapons/axeReload.wav"
+}

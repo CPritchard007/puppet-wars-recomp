@@ -8,8 +8,9 @@ export const VR_WEAPONS=[
  {id:'redbutton',name:'RED BUTTON',damage:10000,interval:2,range:200,capacity:1,reload:0,pellets:1,perk:true,rechargeTime:30,delay:.5}
 ];
 export function vrSurvivalPhase(arena,spawned){
- const phase=spawned<10?0:spawned<40?1:spawned<90?2:3,chapterTwo=['lobby','parking'].includes(arena);
+ const phase=spawned<10?0:spawned<40?1:spawned<90?2:3,chapterTwo=['lobby','parking','corridor'].includes(arena);
  const names=['grunt','fast','fish','bomber','chicken','strong','ninja','zombie','magician','magician','soldier','vampire'];
+ if(arena==='snow')return {phase:phase+1,cap:[4,5,8,10][phase],interval:[3,2,2,1][phase],types:phase===0?['grunt','fast','elf']:['grunt','fast','elf','fish','bomber','chicken','strong']};
  let indices;
  if(phase===0)indices=[spawned%2];
  else if(chapterTwo)indices=phase===1?(arena==='parking'?[1,6,7,9,10,11]:[1,6,9,10]):(arena==='parking'?[0,1,2,3,4,5,6,7,9,10,11]:[0,1,2,3,4,5,6,9,10]);

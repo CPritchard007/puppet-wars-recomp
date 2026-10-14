@@ -4,7 +4,7 @@ const browser=await chromium.launch({channel:'chrome',headless:true});
 try{
  const page=await browser.newPage({viewport:{width:1440,height:900}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('http://127.0.0.1:4173');await page.waitForFunction(()=>window.puppetDebug?.getState().mode==='menu');
- assert.equal(await page.locator('.map').count(),4);
+ assert.equal(await page.locator('.map').count(),6);
  for(const id of ['time-of-day','encounter-mode','loadout-mode','starting-weapon','auto-fire','settings-open','play'])assert.ok(await page.locator('#'+id).isVisible());
  await page.locator('#encounter-mode').selectOption('vr');await page.locator('#starting-weapon').selectOption('2');
  await page.screenshot({path:'artifacts/original-style-menu.png'});

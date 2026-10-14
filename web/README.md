@@ -35,7 +35,7 @@ Nothing has been published to an external website.
   fires, left trigger aims, button 2 reloads, button 3 switches, button 0 jumps,
   button 9/Start pauses. D-pad navigates menus; button 0 confirms. In settings,
   left/right adjusts a focused select or slider, up/down moves between controls.
-- Touch: two independent sticks and fire, aim, reload, switch, teleport and jump buttons.
+- Touch: original fuzzy movement pad, swipe-to-look elsewhere, and drag-to-aim while holding Fire. Tap Switch; the sniper has a scope toggle. Empty magazines reload automatically. Optional reload/jump/teleport buttons and left-handed layout are in Settings.
   Automatically shown on coarse-pointer devices; can be forced on in Settings.
 - Settings offers remapping of every gamepad action and movement/look axis,
   sensitivity, invert Y, and a deadzone slider. Bindings are saved locally.
@@ -75,7 +75,7 @@ before reloading, since reloading starts a fresh diagnostic session.
 
 ## Implemented
 
-Four arenas with selectable day/night variants, nine weapons, the recovered enemy roster and skeletal
+Six arenas (day/night except the original Christmas set), fifteen weapons, the recovered enemy roster and skeletal
 animations, fish/chicken/cake sprite projectiles, distinct enemy AI, animated
 first-person attacks and reloads, scenery damage, music, original VR survival
 and expanded survival, generic controls, local best score and diagnostics.
@@ -167,3 +167,23 @@ The publish script preserves branch history and never force-pushes. It replaces
 previous generated files on `gh-pages`, so keep source and hand-written files on
 `main`. Local publishing is also available with an authenticated `origin`:
 `bash scripts/publish-gh-pages.sh` (updates the branch only).
+
+New in the full arsenal: dual Uzis, submachine gun, M60, baseball bat, axe and sniper rifle.
+See the [content audit](../docs/content-audit.md) for source details and remaining omissions.
+
+
+Player defeat uses the recovered `Default.anim` camera collapse and hides the
+weapon. Surviving puppets keep their victory clips and laughter playing behind
+the game-over menu; restart/arena changes stop those voices. Enemy corpses remain
+for their complete recovered death clip. Headset cameras are never forcibly rolled.
+Assets: `scripts/export_defeat_assets.py` and `scripts/export_touch_assets.py`.
+
+Touch controls follow `Joystick`, `JoystickR`, `MouseLookiPhone`, and
+`FirstPersonControl`: 480×320 reference coordinates, fixed fuzzy knob, independent
+movement/look fingers, delta aiming (holding still stops turning), firing while
+dragging, switch on release, and original directional movement speeds. The source
+GUI atlas requires RGBA4444 decoding; the fuzzy knob is the original RGBA32 texture.
+Browser gestures are consumed on the game surface. Fullscreen/orientation lock is
+requested from the Play gesture where available; OS gestures/browser chrome remain
+platform-controlled. Chrome mobile emulation covers multi-touch and pinch handling;
+physical iOS/Android parity has not yet been verified.

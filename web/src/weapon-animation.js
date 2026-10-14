@@ -6,6 +6,7 @@ export function weaponFrame(clips,sim){
   }
   if(sim.reloading&&clips.reload?.length){state='reload';const duration=clips.reload.reduce((sum,f)=>sum+f.duration,0);time=(1-sim.reloading/sim.weapon.reload)*duration;}
   else if(!sim.weapon.continuous&&sim.fireAge!==null){const duration=clips[fire].reduce((sum,f)=>sum+f.duration,0);if(sim.fireAge<duration||sim.weapon.automatic&&sim.trigger){state=fire;time=sim.fireAge;}}
+  if(sim.weapon.scopeFov&&sim.scopeAge>0&&!sim.reloading){state=sim.scopeAge<.5?'scope':'scopeAim';time=sim.scopeAge;}
   const frames=clips[state];if(!frames?.length)throw new Error(`Missing ${sim.weapon.name} ${state} animation`);
   if(state==='idle'&&clips.idleLoopReverse&&frames.length>1){
     // Traverse the return leg without repeating either endpoint.

@@ -34,9 +34,9 @@ test('zombie falls, rises faster and awards a kill only on its final death',()=>
 test('runner accelerates on hit; strong puppet stays slower and tougher',()=>{
  const f=setup('fast');f.s.damageEnemy(f.e,1);assert.equal(f.e.state,'stagger');step(f.s,1.1);assert.equal(f.e.speed,ENEMY_TYPES.fast.sprint);assert.ok(ENEMY_TYPES.strong.health>f.e.maxHealth);assert.ok(ENEMY_TYPES.strong.speed<f.e.speed);
 });
-test('ninja jumps, trash hides in place, magician changes size and relocates safely',()=>{
+test('ninja jumps, trash remains anchored, magician changes size and relocates safely',()=>{
  const n=setup('ninja');n.e.special=0;step(n.s,.2);assert.equal(n.e.state,'jump');assert.ok(n.e.y>0);
- const t=setup('trash');step(t.s,.2);assert.equal(t.e.hidden,true);step(t.s,2);assert.equal(t.e.x,0);assert.equal(t.e.z,-12);
+ const t=setup('trash');step(t.s,.2);assert.equal(t.e.hidden,false);step(t.s,2);assert.equal(t.e.x,0);assert.equal(t.e.z,-12);
  const m=setup('magician');m.e.special=0;step(m.s,1.5);assert.ok(m.e.magicScale!==1);step(m.s,1.2);assert.ok(m.e.x!==0);assert.ok(validPoint(m.e,m.s.bounds,m.s.obstacles));
 });
 test('vampire alternates forms, bosses shield/charge and kart disengages',()=>{
@@ -58,7 +58,7 @@ test('trash stays anchored after hits, cake lures and a nearby player',()=>{
  const s=new Simulation({trashSpawnPoints:[{x:0,z:-1}],random:()=>.5});s.nextWave=999;s.spawnTrash();const e=s.enemies[0];e.hidden=false;s.damageEnemy(e,1);step(s,1.2);assert.notEqual(e.state,'windup');
  s.cakes.push({id:5,x:10,z:10,y:.3,landed:true,fuse:8,age:0});step(s,2);assert.equal(e.x,0);assert.equal(e.z,-1);assert.notEqual(e.animation,'run');
 });
-test('trash encounters trigger independently in both modes at the nearest designated site',()=>{
+test('trash encounters trigger independently in both modes at a designated site',()=>{
  for(const encounterMode of ['expanded','vr']){const s=new Simulation({encounterMode,trashSpawnPoints:[{id:'far',x:30,z:30},{id:'near',x:0,z:-12}],random:()=>.99});s.kills=12;s.nextWave=999;step(s,.1);const trash=s.enemies.find(e=>e.type==='trash');assert.ok(trash);assert.equal(trash.siteId,'near');step(s,3);assert.equal(s.enemies.filter(e=>e.type==='trash').length,1);assert.ok(s.events.includes('enemyShot'));}
 });
 test('distant trash is not permanently invisible and cannot block expanded waves',()=>{

@@ -1,0 +1,11 @@
+{
+  "id": "./",
+  "name": "Puppet War · Community Recompilation",
+  "short_name": "Puppet War",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "background_color": "#131b23",
+  "theme_color": "#131b23",
+  "icons": [{"src": "favicon.png", "sizes": "72x72", "type": "image/png", "purpose": "any"}]
+}

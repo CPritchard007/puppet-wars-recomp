@@ -17,7 +17,8 @@ const $=s=>document.querySelector(s),canvas=$('#game'),weaponCanvas=$('#weapon')
 let renderer;
 try{renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});}catch(error){throw new Error(`WebGL could not start. Enable hardware acceleration or try another browser. ${error.message}`);}
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.outputColorSpace=THREE.SRGBColorSpace;
-const camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.05,400);camera.rotation.order='YXZ';
+const viewport={width:innerWidth,height:innerHeight};
+const camera=new THREE.PerspectiveCamera(65,viewport.width/viewport.height,.05,400);camera.rotation.order='YXZ';
 const defeat=new DefeatPresentation(camera);let deathClip=null;
 const stored=readSaved('puppet-web-settings-v1',{});
 const input=new Input(canvas,stored);input.onError=error=>reportError(error,{operation:'read controller',hint:'Check browser controller permissions. Keyboard and touch remain available.'});let volume=Number.isFinite(stored.volume)?stored.volume:.4;
@@ -35,8 +36,25 @@ const vr=new VRExperience(renderer,camera,weaponCanvas,{
 });
 vr.supported().then(supported=>{$('#enter-vr').disabled=!supported;$('#enter-vr').textContent=supported?'Enter VR':'VR requires a WebXR headset browser';}).catch(error=>{$('#enter-vr').textContent='VR unavailable in this browser';reportError(error,{operation:'check VR support'});});
 $('#enter-vr').onclick=async()=>{try{if(mode==='loading')return;await vr.start();await startRun();$('#enter-vr').textContent='VR connected';}catch(error){reportError(error,{operation:'enter VR'});}};
-function resize(){if(renderer.xr.isPresenting)return;renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();weaponCanvas.width=innerWidth;weaponCanvas.height=innerHeight;}
-window.addEventListener('resize',resize);resize();
+function resize(){
+ if(renderer.xr.isPresenting)return;
+ const rect=canvas.getBoundingClientRect();
+ const width=Math.max(1,Math.round(rect.width)),height=Math.max(1,Math.round(rect.height));
+ viewport.width=width;viewport.height=height;
+ // CSS owns the display size; Three must not pin it to an old viewport.height.
+ renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();
+ weaponCanvas.width=width;weaponCanvas.height=height;
+}
+let viewportResizeFrame=0;
+function queueResize(){cancelAnimationFrame(viewportResizeFrame);viewportResizeFrame=requestAnimationFrame(resize);}
+new ResizeObserver(queueResize).observe(canvas);
+window.addEventListener('resize',queueResize);
+window.visualViewport?.addEventListener('resize',queueResize);
+window.addEventListener('pageshow',queueResize);
+window.addEventListener('orientationchange',queueResize);
+document.addEventListener('fullscreenchange',queueResize);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)queueResize();});
+resize();
 function setMode(next){if(next!=='over')defeat.stop();mode=next;document.body.dataset.mode=next;document.body.classList.toggle('touch-playing',showTouch&&next==='playing');setContext({phase:mode,episode});input.active=mode==='playing';$('#menu').hidden=!['menu','loading'].includes(mode);$('#pause-menu').hidden=!['paused','over'].includes(mode);$('#hud').hidden=!['playing','paused'].includes(mode);$('#crosshair').hidden=mode!=='playing';$('#pause').hidden=mode!=='playing';$('#touch-controls').hidden=mode!=='playing'||!showTouch;
   if(mode!=='playing'){input.clear();if(document.pointerLockElement)document.exitPointerLock();}
 }
@@ -114,9 +132,9 @@ for(const [id,key]of [['sensitivity','sensitivity'],['deadzone','deadzone']]){co
 $('#volume').value=volume;$('#volume').oninput=e=>{volume=Number(e.target.value);storeSettings();};$('#invert').checked=input.invertY;$('#invert').onchange=e=>{input.invertY=e.target.checked;storeSettings();};$('#touch-left').checked=input.leftHanded;$('#touch-extended').checked=stored.touchExtended??false;function touchLayout(){document.body.classList.toggle('touch-left',input.leftHanded);document.body.classList.toggle('touch-extended',$('#touch-extended').checked);}touchLayout();$('#touch-left').onchange=e=>{input.clear();input.leftHanded=e.target.checked;touchLayout();storeSettings();};$('#touch-extended').onchange=()=>{touchLayout();storeSettings();};$('#touch-toggle').checked=showTouch;$('#touch-toggle').onchange=e=>{showTouch=e.target.checked;storeSettings();};
 function aimRay(x=0,y=0){if(vr.active){vr.aim(ray);if(x||y)ray.ray.direction.add(new THREE.Vector3(x,y,0)).normalize();}else ray.setFromCamera(new THREE.Vector2(x,y),camera);}
 function weaponMuzzle(mirror=false){
- const p=muzzlePixel(sim.weapon.id,innerWidth,innerHeight);if(mirror)p.x=innerWidth-p.x;
- if(vr.active){vr.weapon.updateWorldMatrix(true,false);return vr.weapon.localToWorld(new THREE.Vector3((p.x/innerWidth-.5)*1.1,(.5-p.y/innerHeight)*.7,0));}
- const direction=new THREE.Vector3(p.x/innerWidth*2-1,1-p.y/innerHeight*2,.5).unproject(camera).sub(camera.position).normalize();
+ const p=muzzlePixel(sim.weapon.id,viewport.width,viewport.height);if(mirror)p.x=viewport.width-p.x;
+ if(vr.active){vr.weapon.updateWorldMatrix(true,false);return vr.weapon.localToWorld(new THREE.Vector3((p.x/viewport.width-.5)*1.1,(.5-p.y/viewport.height)*.7,0));}
+ const direction=new THREE.Vector3(p.x/viewport.width*2-1,1-p.y/viewport.height*2,.5).unproject(camera).sub(camera.position).normalize();
  const forward=camera.getWorldDirection(new THREE.Vector3());return camera.position.clone().addScaledVector(direction,3/direction.dot(forward));
 }
 function shoot(){
@@ -154,20 +172,20 @@ function updateActors(dt){
   const picks=new Set(sim.pickups);for(const[p,m]of pickupMeshes)if(!picks.has(p)){m.dispose();pickupMeshes.delete(p);}
   for(const p of sim.pickups){let m=pickupMeshes.get(p);if(!m){m=new PickupSprite(p.kind,world.pickups[p.kind]);world.scene.add(m);pickupMeshes.set(p,m);}m.position.set(p.x,world.floorY+1+Math.sin(sim.time*3)*.2,p.z);m.animate(sim.time);}
 }
-function drawWeapon(){ctx.clearRect(0,0,innerWidth,innerHeight);if(!hasPlayed||!['playing','paused'].includes(mode)||!sim)return;
+function drawWeapon(){ctx.clearRect(0,0,viewport.width,viewport.height);if(!hasPlayed||!['playing','paused'].includes(mode)||!sim)return;
   weaponVisual=weaponFrame(weaponClips[sim.weaponIndex],sim);
   $('#crosshair').hidden=mode!=='playing'||weaponVisual.state==='scopeAim';
-  if(weaponVisual.state==='scopeAim'&&!vr.active){const image=images[weaponVisual.texture];const size=Math.max(innerWidth,innerHeight);ctx.drawImage(image,(innerWidth-size)/2,(innerHeight-size)/2,size,size);return;}
+  if(weaponVisual.state==='scopeAim'&&!vr.active){const image=images[weaponVisual.texture];const size=Math.max(viewport.width,viewport.height);ctx.drawImage(image,(viewport.width-size)/2,(viewport.height-size)/2,size,size);return;}
   const visuals=[weaponVisual];if(weaponClips[sim.weaponIndex].left)visuals.push({...weaponFrame(weaponClips[sim.weaponIndex].left,sim),mirror:true});
   for(const visual of visuals){
   const image=images[visual.texture];if(!image)throw new Error(`Missing weapon atlas: ${weaponVisual.texture}`);
   const [u,v,uw,vh]=visual.uv,[left,top,right,bottom]=visual.bounds;
   // PackedSprite trims each frame. Its original normalized bounds preserve the
   // hands' placement across atlases; Unity UVs have a bottom-left origin.
-  const {halfH,halfW,baseY}=weaponLayout(innerWidth,innerHeight);
-  ctx.save();if(visual.mirror){ctx.translate(innerWidth,0);ctx.scale(-1,1);}
+  const {halfH,halfW,baseY}=weaponLayout(viewport.width,viewport.height);
+  ctx.save();if(visual.mirror){ctx.translate(viewport.width,0);ctx.scale(-1,1);}
   ctx.drawImage(image,Math.round(u*image.width),Math.round((1-v-vh)*image.height),Math.round(uw*image.width),Math.round(vh*image.height),
-    innerWidth/2+left*halfW,baseY-top*halfH,(right-left)*halfW,(top-bottom)*halfH);ctx.restore();
+    viewport.width/2+left*halfW,baseY-top*halfH,(right-left)*halfW,(top-bottom)*halfH);ctx.restore();
   }
 }
 const hudWeaponIcons=["weapon-1","weapon-3","weapon-7","extra-20","extra-18","weapon-9","extra-25","extra-27","extra-28","extra-21","weapon-2","weapon-4","weapon-8","weapon-10","extra-22"];
@@ -210,7 +228,7 @@ function frame(now){
   if(mode==='over'&&sim){sim.updateDefeat(dt);updateActors(dt);enemyEffects?.update(sim,enemyActors);defeat.update(dt,sim,{audio,buffers:soundBuffers,volume,vr:vr.active});if(sim.defeatAge>=1.2&&$('#pause-menu').hidden){$('#pause-menu').hidden=false;$('#restart').focus();}}
   if(mode==='menu'&&world&&!vr.active){camera.position.set(world.spawn.x,world.eyeHeight,world.spawn.z);camera.rotation.set(-.03,-.15+Math.sin(now*.0001)*.07,0);for(const actor of decorative)actor.update(dt);}
   updateLoopSound();updateMusic();
-  if(world){vr.update(dt,sim,mode,state.pressed.teleport);drawWeapon();if(hasPlayed&&['playing','paused','over'].includes(mode))drawFishSplat(ctx,world.roster.projectiles.fishSplat,sim?.fishSplat,innerWidth,innerHeight);renderer.render(world.scene,camera);}
+  if(world){vr.update(dt,sim,mode,state.pressed.teleport);drawWeapon();if(hasPlayed&&['playing','paused','over'].includes(mode))drawFishSplat(ctx,world.roster.projectiles.fishSplat,sim?.fishSplat,viewport.width,viewport.height);renderer.render(world.scene,camera);}
  }catch(error){reportError(error,{operation:'game frame'});if(mode==='playing')pause('Rendering or simulation failed. See Diagnostics.');}
 }
 renderer.setAnimationLoop(frame);

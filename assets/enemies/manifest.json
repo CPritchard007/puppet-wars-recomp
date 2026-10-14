@@ -1,0 +1,97 @@
+{
+  "characters": {
+    "grunt": {
+      "url": "assets/enemies/grunt.json",
+      "sourceRoot": "Enemy00_Defult",
+      "height": 3.3
+    },
+    "fast": {
+      "url": "assets/enemies/fast.json",
+      "sourceRoot": "Enemy01_Fast02",
+      "height": 2.0625
+    },
+    "chicken": {
+      "url": "assets/enemies/chicken.json",
+      "sourceRoot": "Enemy04_ThrowChicken02",
+      "height": 3.3
+    },
+    "fish": {
+      "url": "assets/enemies/fish.json",
+      "sourceRoot": "Enemy02_ThrowFish02",
+      "height": 3.7125
+    },
+    "bomber": {
+      "url": "assets/enemies/bomber.json",
+      "sourceRoot": "Enemy03_Suicidel",
+      "height": 3.3
+    },
+    "strong": {
+      "url": "assets/enemies/strong.json",
+      "sourceRoot": "Enemy05_Strongest",
+      "height": 6.1875
+    },
+    "ninja": {
+      "url": "assets/enemies/ninja.json",
+      "sourceRoot": "Enemy06_Ninja",
+      "height": 4.125
+    },
+    "zombie": {
+      "url": "assets/enemies/zombie.json",
+      "sourceRoot": "Enemy07_Zombie",
+      "height": 3.7125
+    },
+    "soldier": {
+      "url": "assets/enemies/soldier.json",
+      "sourceRoot": "Enemy09_SoldierShooter",
+      "height": 4.949999999999999
+    },
+    "trash": {
+      "url": "assets/enemies/trash.json",
+      "sourceRoot": "Enemy08_TrashShoot",
+      "height": 4.125
+    },
+    "magician": {
+      "url": "assets/enemies/magician.json",
+      "sourceRoot": "Enemy09_Magic",
+      "height": 4.640625
+    },
+    "vampire": {
+      "url": "assets/enemies/vampire.json",
+      "sourceRoot": "Enemy11_Vampire",
+      "height": 4.125
+    },
+    "bat": {
+      "url": "assets/enemies/bat.json",
+      "sourceRoot": "Enemy11_Bat",
+      "height": 1.6
+    },
+    "boss": {
+      "url": "assets/enemies/boss.json",
+      "sourceRoot": "BossLite",
+      "height": 6
+    },
+    "clown": {
+      "url": "assets/enemies/clown.json",
+      "sourceRoot": "ClownBoss",
+      "height": 4.5
+    },
+    "kart": {
+      "url": "assets/enemies/kart.json",
+      "sourceRoot": "KartingPuppet@",
+      "height": 3.2
+    },
+    "elf": {
+      "url": "assets/enemies/elf.json",
+      "sourceRoot": "Enemy06_Elf",
+      "height": 2.8874999999999997
+    }
+  },
+  "projectiles": {
+    "fish": "assets/enemies/fish-projectile.json",
+    "chicken": "assets/enemies/chicken-projectile.json",
+    "tomato": "assets/enemies/tomato-projectile.json",
+    "snowball": "assets/enemies/snowball-projectile.json",
+    "grenade": "assets/enemies/grenade-projectile.json",
+    "fireball": "assets/enemies/fireball-projectile.json"
+  }
+}

@@ -1,0 +1,30 @@
+[
+  {
+    "id": 1,
+    "key": "studio",
+    "name": "The studio",
+    "scene": "assets/vr/studio/scene.json",
+    "sourceScene": "05 Levels.unity"
+  },
+  {
+    "id": 2,
+    "key": "lobby",
+    "name": "The lobby",
+    "scene": "assets/vr/lobby/scene.json",
+    "sourceScene": "20_Level_Lobby.unity"
+  },
+  {
+    "id": 3,
+    "key": "town",
+    "name": "Town at night",
+    "scene": "assets/vr/town/scene.json",
+    "sourceScene": "14 Level_StreetNIGHT.unity"
+  },
+  {
+    "id": 4,
+    "key": "parking",
+    "name": "Parking lot at night",
+    "scene": "assets/vr/parking/scene.json",
+    "sourceScene": "31_Level_ParkingLot_Night.unity"
+  }
+]

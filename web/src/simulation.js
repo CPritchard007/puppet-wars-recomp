@@ -26,7 +26,7 @@ export class Simulation {
   constructor({spawn={x:0,z:0},bounds={minX:-40,maxX:40,minZ:-40,maxZ:40},obstacles=[],coverPoints=[],random=Math.random,canSpawn=()=>true,arena={key:'studio'},spawnPoints=[],trashSpawnPoints=[],encounterMode='expanded',loadout=null,startingWeapon=0}={}){
     this.trashSpawnPoints=trashSpawnPoints;this.arena=arena;this.spawnPoints=spawnPoints;this.encounterMode=encounterMode;this.loadout=loadout||WEAPONS.map((_,i)=>i);this.startingWeapon=startingWeapon;this.navigation=new EnemyNavigation(bounds,obstacles,coverPoints);this.canSpawn=canSpawn;this.spawn=spawn;this.bounds=bounds;this.obstacles=obstacles;this.random=random;this.reset();
   }
-  reset(){this.player={...this.spawn,health:100,y:0,vy:0};this.yaw=0;this.pitch=0;this.wave=0;this.kills=0;this.score=0;this.money=0;this.time=0;this.enemies=[];this.corpses=[];this.pickups=[];this.projectiles=[];this.effects=[];this.effectId=0;this.weaponIndex=this.startingWeapon;this.ammo=WEAPONS.map(w=>w.capacity);this.reserve=WEAPONS.map((w,i)=>w.reserve??[120,40,0][i]??0);this.perkTimers=WEAPONS.map(()=>0);this.pendingAttacks=[];this.cakes=[];this.triggerTime=0;this.trigger=false;this.releaseAge=10;this.totalSpawned=0;this.nextTrashKill=12;this.trashSerial=0;this.spawnTimer=3;this.teleportCooldown=0;this.shotsFired=0;this.damageDealt=0;this.fireAge=null;this.cooldown=0;this.reloading=0;this.nextWave=2;this.hurt=0;this.ended=false;this.events=[];}
+  reset(){this.player={...this.spawn,health:100,y:0,vy:0};this.yaw=0;this.pitch=0;this.wave=0;this.kills=0;this.score=0;this.money=0;this.time=0;this.enemies=[];this.corpses=[];this.pickups=[];this.projectiles=[];this.effects=[];this.fishSplat=null;this.effectId=0;this.weaponIndex=this.startingWeapon;this.ammo=WEAPONS.map(w=>w.capacity);this.reserve=WEAPONS.map((w,i)=>w.reserve??[120,40,0][i]??0);this.perkTimers=WEAPONS.map(()=>0);this.pendingAttacks=[];this.cakes=[];this.triggerTime=0;this.trigger=false;this.releaseAge=10;this.totalSpawned=0;this.nextTrashKill=12;this.trashSerial=0;this.spawnTimer=3;this.teleportCooldown=0;this.shotsFired=0;this.damageDealt=0;this.fireAge=null;this.cooldown=0;this.reloading=0;this.nextWave=2;this.hurt=0;this.ended=false;this.events=[];}
   get weapon(){return WEAPONS[this.weaponIndex];}
   reload(){if(!this.weapon.melee&&!this.weapon.perk&&!this.reloading&&this.ammo[this.weaponIndex]<this.weapon.capacity&&this.reserve[this.weaponIndex]>0){this.reloading=this.weapon.reload;this.events.push('reload');}}
   switchWeapon(){if(this.reloading)return;this.selectWeapon(this.loadout[(this.loadout.indexOf(this.weaponIndex)+1)%this.loadout.length]);}
@@ -92,7 +92,7 @@ export class Simulation {
     if(pos){const type=p.types[Math.floor(this.random()*p.types.length)];this.enemies.push(createEnemy(type,pos,`vr-${this.totalSpawned++}`,p.phase));this.spawnTimer=p.interval;}else this.spawnTimer=.5;
   }
   update(dt,input){
-    if(this.ended)return;dt=Math.min(.05,Math.max(0,dt));this.time+=dt;this.teleportCooldown=Math.max(0,this.teleportCooldown-dt);
+    if(this.ended)return;dt=Math.min(.05,Math.max(0,dt));this.time+=dt;if(this.fishSplat&&(this.fishSplat.age+=dt)>=2)this.fishSplat=null;this.teleportCooldown=Math.max(0,this.teleportCooldown-dt);
     if(input.fire){this.triggerTime=this.trigger?this.triggerTime+dt:dt;this.releaseAge=0;}else{if(this.trigger)this.releaseAge=0;this.releaseAge+=dt;this.triggerTime=0;}this.trigger=!!input.fire;
     this.updateSpecials(dt);
     if(this.fireAge!==null)this.fireAge+=dt;

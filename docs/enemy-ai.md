@@ -46,3 +46,13 @@ that forward sweep and delayed impact instead of a single instant mesh ray.
 It can hit multiple puppets, retains wall occlusion, and uses the recovered
 07ShotSound/07ReloadSound hit/miss recordings. The existing Fire/AfterFire
 sprite sequence remains intact. No upgrade stage is silently granted.
+
+Fish hits now render the recovered `01EXplosion_FishScreenEffect` PackedSprite
+(34 frames, original green tint) over the weapon canvas. This canvas is also
+used by the VR weapon display. The splat is randomly rotated, retriggered on
+another successful fish hit, and cleared after two seconds, matching
+`PlayAnimationFishBK`. Misses and blocked throws do not trigger it.
+Bomber detonation follows `Enemy03_Suicidel.ccExplode` →
+`CentralController12 Explosion` → `Ehit_Sprite RPG`, using its 18-frame
+`SpriteExplodeEffects` animation instead of the generic sphere. The effect
+plays once and is removed after the source controller's one-second lifetime.

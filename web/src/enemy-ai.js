@@ -85,7 +85,7 @@ export function updateEnemy(s,e,dt,moveBody){
  if(e.state==='roll'){const side=e.side||1;move(s,e,{x:e.x+Math.cos(s.yaw)*4*side,z:e.z-Math.sin(s.yaw)*4*side},6,dt,moveBody);if(e.timer<=0){e.side=-side;enter(e,'patrol');}return;}
  if(e.state==='windup'){e.animation='attack';if(e.timer<=0){melee(s,e);enter(e,'recoverAttack',p.recovery);}return;}
  if(e.state==='recoverAttack'){e.animation='attack';if(e.timer<=0){if(e.type==='kart')enter(e,'escape',5+s.random()*5);else enter(e,'pursue');}return;}
- if(e.state==='fuse'){e.animation='hit';e.flash=.15;if(e.timer<=0){if(d<5&&visible)s.hurtPlayer(p.damage);s.effects.push({id:++s.effectId,x:e.x,z:e.z,y:1,radius:5,age:0,kind:'blast'});s.killEnemy(e,false);}return;}
+ if(e.state==='fuse'){e.animation='hit';e.flash=.15;if(e.timer<=0){if(d<5&&visible)s.hurtPlayer(p.damage);s.effects.push({id:++s.effectId,x:e.x,z:e.z,y:1,radius:5,age:0,life:1,kind:'bomberBlast'});s.killEnemy(e,false);}return;}
  if(e.state==='throw'){
   e.animation='attack';if(e.timer<=0){fire(s,e);e.shots++;if(e.shots<(p.burst||1))e.timer=p.shotDelay;else{e.shots=0;enter(e,p.stationary?'hidden':'coverWait',p.shotDelay+.3);}}return;
  }
@@ -142,11 +142,11 @@ export function updateProjectiles(s,dt){
   p.x=p.start.x+(p.target.x-p.start.x)*t;p.z=p.start.z+(p.target.z-p.start.z)*t;p.y=2.2*(1-t)+Math.sin(t*Math.PI)*(p.kind==='fireball'?0:3);
   const wall=!clearSegment(before,p,s.obstacles.filter(b=>!p.ignoredObstacles?.includes(b)));
   if(wall||t>=1){
-   if(!wall&&Math.hypot(p.x-s.player.x,p.z-s.player.z)<p.radius&&s.player.y<1.5&&clearSegment(p,s.player,s.obstacles))s.hurtPlayer(p.damage);
+   if(!wall&&Math.hypot(p.x-s.player.x,p.z-s.player.z)<p.radius&&s.player.y<1.5&&clearSegment(p,s.player,s.obstacles)){s.hurtPlayer(p.damage);if(p.kind==='fish')s.fishSplat={age:0,rotation:s.random()*Math.PI*2};}
    s.effects.push({id:++s.effectId,x:p.x,z:p.z,y:Math.max(.2,p.y),radius:p.radius,age:0,kind:'impact'});return false;
   }return true;
  });
- s.effects=s.effects.filter(e=>(e.age+=dt)<.45);
+ s.effects=s.effects.filter(e=>(e.age+=dt)<(e.life??.45));
 }
 export function waveTypes(wave){
  const basic=['grunt','fast','chicken','fish','strong','bomber'];

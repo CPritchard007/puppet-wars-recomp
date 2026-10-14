@@ -152,6 +152,6 @@ def export_roster():
   if '--resume' in sys.argv and existing.exists():
    rig=json.loads(existing.read_text());manifest['characters'][key]={'url':'assets/enemies/'+key+'.json','sourceRoot':rig['sourceRoot'],'height':rig['height']};continue
   manifest['characters'][key]=export_character(key,spec)
- for key,scene,name in [('fish',STUDIO,'GrenadeFish'),('chicken',STUDIO,'grenade Chicken'),('tomato','31_Level_ParkingLot_Night.unity','GrenadeTomatoLobby'),('snowball','27 Level_Xmas.unity','GrenadeSnowBall'),('grenade',ALL,'GrenadeBomb'),('fireball',ALL,'ClownGiftFlameBall')]:manifest['projectiles'][key]=export_projectile(key,scene,name)
+ for key,scene,name in [('fishSplat',STUDIO,'01EXplosion_FishScreenEffect'),('bomberBlast',STUDIO,'Ehit_Sprite RPG'),('fish',STUDIO,'GrenadeFish'),('chicken',STUDIO,'grenade Chicken'),('tomato','31_Level_ParkingLot_Night.unity','GrenadeTomatoLobby'),('snowball','27 Level_Xmas.unity','GrenadeSnowBall'),('grenade',ALL,'GrenadeBomb'),('fireball',ALL,'ClownGiftFlameBall')]:manifest['projectiles'][key]=export_projectile(key,scene,name)
  (TARGET/'manifest.json').write_text(json.dumps(manifest,indent=2))
 if __name__=='__main__':export_roster()

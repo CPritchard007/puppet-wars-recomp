@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { Input, PROFILES } from './input.js';
 import { characterAnimation,characterFacing } from './character-roster.js';
-import { labelEnemy,EnemyEffects } from './enemy-effects.js';
+import { EnemyEffects } from './enemy-effects.js';
+import { drawFishSplat } from './screen-effects.js';
 import { weaponFrame } from './weapon-animation.js';
 import { Simulation,WEAPONS,moveBody } from './simulation.js';
 import { ARENAS } from './arenas.js';
@@ -138,7 +139,7 @@ function updateActors(dt){
     let actor=enemyActors.get(e.id);
     const model=e.type==='vampire'&&e.form==='bat'?'bat':e.type;
     if(actor&&actor.modelType!==model){actor.dispose();enemyActors.delete(e.id);actor=null;}
-    if(!actor){actor=world.makePuppet(model);actor.hitVersion=e.hitVersion||0;actor.setEnemyId(e.id);labelEnemy(actor,e.type);enemyActors.set(e.id,actor);}
+    if(!actor){actor=world.makePuppet(model);actor.hitVersion=e.hitVersion||0;actor.setEnemyId(e.id);enemyActors.set(e.id,actor);}
     actor.visible=!e.hidden;actor.scale.setScalar(e.magicScale||1);
     actor.position.set(e.x,world.floorY+(e.y||0),e.z);
     actor.rotation.y=characterFacing(e,sim.player,actor.rotation.y);
@@ -196,7 +197,7 @@ function frame(now){
   }
   if(mode==='menu'&&world&&!vr.active){camera.position.set(world.spawn.x,world.eyeHeight,world.spawn.z);camera.rotation.set(-.03,-.15+Math.sin(now*.0001)*.07,0);for(const actor of decorative)actor.update(dt);}
   updateLoopSound();updateMusic();
-  if(world){vr.update(dt,sim,mode,state.pressed.teleport);drawWeapon();renderer.render(world.scene,camera);}
+  if(world){vr.update(dt,sim,mode,state.pressed.teleport);drawWeapon();if(hasPlayed&&['playing','paused','over'].includes(mode))drawFishSplat(ctx,world.roster.projectiles.fishSplat,sim?.fishSplat,innerWidth,innerHeight);renderer.render(world.scene,camera);}
  }catch(error){reportError(error,{operation:'game frame'});if(mode==='playing')pause('Rendering or simulation failed. See Diagnostics.');}
 }
 renderer.setAnimationLoop(frame);

@@ -92,6 +92,8 @@
     "tomato": "assets/enemies/tomato-projectile.json",
     "snowball": "assets/enemies/snowball-projectile.json",
     "grenade": "assets/enemies/grenade-projectile.json",
-    "fireball": "assets/enemies/fireball-projectile.json"
+    "fireball": "assets/enemies/fireball-projectile.json",
+    "fishSplat": "assets/enemies/fishSplat-projectile.json",
+    "bomberBlast": "assets/enemies/bomberBlast-projectile.json"
   }
 }

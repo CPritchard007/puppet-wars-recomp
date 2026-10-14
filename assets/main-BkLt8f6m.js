@@ -34856,7 +34856,11 @@ try {
 }
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.outputColorSpace = SRGBColorSpace;
-var camera = new PerspectiveCamera(65, innerWidth / innerHeight, .05, 400);
+var viewport = {
+	width: innerWidth,
+	height: innerHeight
+};
+var camera = new PerspectiveCamera(65, viewport.width / viewport.height, .05, 400);
 camera.rotation.order = "YXZ";
 var defeat = new DefeatPresentation(camera);
 var deathClip = null;
@@ -34945,13 +34949,30 @@ $("#enter-vr").onclick = async () => {
 };
 function resize() {
 	if (renderer.xr.isPresenting) return;
-	renderer.setSize(innerWidth, innerHeight);
-	camera.aspect = innerWidth / innerHeight;
+	const rect = canvas.getBoundingClientRect();
+	const width = Math.max(1, Math.round(rect.width)), height = Math.max(1, Math.round(rect.height));
+	viewport.width = width;
+	viewport.height = height;
+	renderer.setSize(width, height, false);
+	camera.aspect = width / height;
 	camera.updateProjectionMatrix();
-	weaponCanvas.width = innerWidth;
-	weaponCanvas.height = innerHeight;
+	weaponCanvas.width = width;
+	weaponCanvas.height = height;
 }
-window.addEventListener("resize", resize);
+var viewportResizeFrame = 0;
+function queueResize() {
+	cancelAnimationFrame(viewportResizeFrame);
+	viewportResizeFrame = requestAnimationFrame(resize);
+}
+new ResizeObserver(queueResize).observe(canvas);
+window.addEventListener("resize", queueResize);
+window.visualViewport?.addEventListener("resize", queueResize);
+window.addEventListener("pageshow", queueResize);
+window.addEventListener("orientationchange", queueResize);
+document.addEventListener("fullscreenchange", queueResize);
+document.addEventListener("visibilitychange", () => {
+	if (!document.hidden) queueResize();
+});
 resize();
 function setMode(next) {
 	if (next !== "over") defeat.stop();
@@ -35384,13 +35405,13 @@ function aimRay(x = 0, y = 0) {
 	} else ray.setFromCamera(new Vector2(x, y), camera);
 }
 function weaponMuzzle(mirror = false) {
-	const p = muzzlePixel(sim.weapon.id, innerWidth, innerHeight);
-	if (mirror) p.x = innerWidth - p.x;
+	const p = muzzlePixel(sim.weapon.id, viewport.width, viewport.height);
+	if (mirror) p.x = viewport.width - p.x;
 	if (vr.active) {
 		vr.weapon.updateWorldMatrix(true, false);
-		return vr.weapon.localToWorld(new Vector3((p.x / innerWidth - .5) * 1.1, (.5 - p.y / innerHeight) * .7, 0));
+		return vr.weapon.localToWorld(new Vector3((p.x / viewport.width - .5) * 1.1, (.5 - p.y / viewport.height) * .7, 0));
 	}
-	const direction = new Vector3(p.x / innerWidth * 2 - 1, 1 - p.y / innerHeight * 2, .5).unproject(camera).sub(camera.position).normalize();
+	const direction = new Vector3(p.x / viewport.width * 2 - 1, 1 - p.y / viewport.height * 2, .5).unproject(camera).sub(camera.position).normalize();
 	const forward = camera.getWorldDirection(new Vector3());
 	return camera.position.clone().addScaledVector(direction, 3 / direction.dot(forward));
 }
@@ -35495,14 +35516,14 @@ function updateActors(dt) {
 	}
 }
 function drawWeapon() {
-	ctx.clearRect(0, 0, innerWidth, innerHeight);
+	ctx.clearRect(0, 0, viewport.width, viewport.height);
 	if (!hasPlayed || !["playing", "paused"].includes(mode) || !sim) return;
 	weaponVisual = weaponFrame(weaponClips[sim.weaponIndex], sim);
 	$("#crosshair").hidden = mode !== "playing" || weaponVisual.state === "scopeAim";
 	if (weaponVisual.state === "scopeAim" && !vr.active) {
 		const image = images[weaponVisual.texture];
-		const size = Math.max(innerWidth, innerHeight);
-		ctx.drawImage(image, (innerWidth - size) / 2, (innerHeight - size) / 2, size, size);
+		const size = Math.max(viewport.width, viewport.height);
+		ctx.drawImage(image, (viewport.width - size) / 2, (viewport.height - size) / 2, size, size);
 		return;
 	}
 	const visuals = [weaponVisual];
@@ -35514,13 +35535,13 @@ function drawWeapon() {
 		const image = images[visual.texture];
 		if (!image) throw new Error(`Missing weapon atlas: ${weaponVisual.texture}`);
 		const [u, v, uw, vh] = visual.uv, [left, top, right, bottom] = visual.bounds;
-		const { halfH, halfW, baseY } = weaponLayout(innerWidth, innerHeight);
+		const { halfH, halfW, baseY } = weaponLayout(viewport.width, viewport.height);
 		ctx.save();
 		if (visual.mirror) {
-			ctx.translate(innerWidth, 0);
+			ctx.translate(viewport.width, 0);
 			ctx.scale(-1, 1);
 		}
-		ctx.drawImage(image, Math.round(u * image.width), Math.round((1 - v - vh) * image.height), Math.round(uw * image.width), Math.round(vh * image.height), innerWidth / 2 + left * halfW, baseY - top * halfH, (right - left) * halfW, (top - bottom) * halfH);
+		ctx.drawImage(image, Math.round(u * image.width), Math.round((1 - v - vh) * image.height), Math.round(uw * image.width), Math.round(vh * image.height), viewport.width / 2 + left * halfW, baseY - top * halfH, (right - left) * halfW, (top - bottom) * halfH);
 		ctx.restore();
 	}
 }
@@ -35694,7 +35715,7 @@ function frame(now) {
 				"playing",
 				"paused",
 				"over"
-			].includes(mode)) drawFishSplat(ctx, world.roster.projectiles.fishSplat, sim?.fishSplat, innerWidth, innerHeight);
+			].includes(mode)) drawFishSplat(ctx, world.roster.projectiles.fishSplat, sim?.fishSplat, viewport.width, viewport.height);
 			renderer.render(world.scene, camera);
 		}
 	} catch (error) {
@@ -35764,4 +35785,4 @@ window.puppetDebug = { getState: () => ({
 await selectEpisode(1);
 //#endregion
 
-//# sourceMappingURL=main-85Kt1s1c.js.map
+//# sourceMappingURL=main-BkLt8f6m.js.map

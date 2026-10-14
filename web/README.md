@@ -187,3 +187,11 @@ Browser gestures are consumed on the game surface. Fullscreen/orientation lock i
 requested from the Play gesture where available; OS gestures/browser chrome remain
 platform-controlled. Chrome mobile emulation covers multi-touch and pinch handling;
 physical iOS/Android parity has not yet been verified.
+
+Every production build includes `public/social/puppet-war-preview.png` and runs
+`scripts/build-metadata.mjs` to verify the image and write its dimensions and
+absolute Open Graph/Twitter URLs into `dist/index.html`. GitHub Actions uses
+`GITHUB_REPOSITORY` to determine the Pages URL. Set `SITE_URL` when building for a
+custom domain or another hosting location (for example,
+`SITE_URL=https://example.com/game/ npm run build`). A missing or invalid thumbnail
+fails the build instead of publishing broken preview metadata.

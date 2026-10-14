@@ -103,3 +103,5 @@ body[data-mode=playing] #show-errors{display:block;position:fixed;left:max(8px,e
 body.touch-playing .touch-actions button[data-touch=switch]{color:transparent;text-shadow:none;border:0;background:none;box-shadow:none}
 
 #hud .health-track::before{content:"";position:absolute;z-index:1;left:2%;right:2%;top:0;height:55%;background:url("/assets/hud/health-highlight.png") center/100% 100% no-repeat;pointer-events:none}
+
+.creator-credit{margin:18px auto 0;max-width:680px;padding:12px 16px;text-align:center;color:#fff7c2;background:#143300b8;border-top:1px solid #c5f00066;font-size:12px;line-height:1.5}.creator-credit strong,.creator-credit span{display:block}.creator-credit strong{color:#ffe600}.creator-credit span{margin-top:3px;font-size:11px}

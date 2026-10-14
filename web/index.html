@@ -1,10 +1,29 @@
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="theme-color" content="#121b24"><title>Puppet War · Web</title><link rel="stylesheet" href="/src/style.css"></head>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="theme-color" content="#121b24"><title>Puppet War · Community Recompilation</title>
+<meta name="description" content="Play Puppet War in your browser. A community recompilation honoring the original game by Twindigo and Oren Ben Tov, with keyboard, controller and touch support.">
+<link rel="icon" type="image/png" href="./favicon.png">
+<link rel="apple-touch-icon" href="./favicon.png">
+<link rel="canonical" href="https://cpritchard007.github.io/puppet_wars_recomp/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Puppet War · Community Recompilation">
+<meta property="og:title" content="Puppet War · Community Recompilation">
+<meta property="og:description" content="The puppets are back. Play this community web recompilation, honoring the original game by Twindigo and Oren Ben Tov.">
+<meta property="og:url" content="https://cpritchard007.github.io/puppet_wars_recomp/">
+<meta property="og:image" content="https://cpritchard007.github.io/puppet_wars_recomp/social/puppet-war-preview.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1688">
+<meta property="og:image:height" content="780">
+<meta property="og:image:alt" content="Puppet War's colorful studio arena, with the rainbow set, clown cutouts and original touch controls.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Puppet War · Community Recompilation">
+<meta name="twitter:description" content="A community web recompilation honoring Puppet War's original creators, Twindigo and Oren Ben Tov.">
+<meta name="twitter:image" content="https://cpritchard007.github.io/puppet_wars_recomp/social/puppet-war-preview.png">
+<meta name="twitter:image:alt" content="Puppet War's colorful studio arena and original touch controls."><link rel="stylesheet" href="/src/style.css"></head>
 <body>
 <canvas id="game" aria-label="Puppet War first-person arena"></canvas>
 <canvas id="weapon" aria-hidden="true"></canvas>
 <div id="hit-screen"></div><div id="crosshair" hidden><i></i><b></b></div>
-<header><a class="wordmark" href="./">PUPPET<span>WAR</span><small>WEB EDITION · EARLY BUILD</small></a><div class="header-right"><span id="controller-status">Keyboard + mouse</span><button id="pause" aria-label="Pause" title="Pause (Esc)" hidden>Pause <kbd>ESC</kbd></button><button id="show-errors">Diagnostics <span id="error-count">0</span></button></div></header>
+<header><a class="wordmark" href="./">PUPPET<span>WAR</span><small>COMMUNITY RECOMPILATION</small></a><div class="header-right"><span id="controller-status">Keyboard + mouse</span><button id="pause" aria-label="Pause" title="Pause (Esc)" hidden>Pause <kbd>ESC</kbd></button><button id="show-errors">Diagnostics <span id="error-count">0</span></button></div></header>
 <div id="hud" hidden><div class="hud-left"><label>HEALTH</label><strong id="health">100</strong><div class="health-track"><i id="health-fill"></i></div></div><div class="hud-center"><span id="wave">WAVE 01</span><strong id="remaining">GET READY</strong><small id="score">0 POINTS</small></div><div class="hud-right"><img id="weapon-icon" src="assets/hud/weapon-1.png" alt=""><label id="weapon-name">PISTOL</label><strong id="ammo">30 <small>/ 120</small></strong><span id="reload-status">R · RELOAD &nbsp; Q · SWITCH</span></div></div>
 <main id="menu"><div class="menu-panel">
 <div class="menu-brand"><img src="assets/menu/logo.png" alt="Puppet War F.P.S." width="256" height="128"><p>CHOOSE YOUR SET. SURVIVE THE PUPPETS.</p></div>
@@ -13,6 +32,7 @@
 <div class="loadout-options"><label>Time of day<select id="time-of-day"><option value="day">Day</option><option value="night">Night</option></select></label><label>Encounter mode<select id="encounter-mode"><option value="expanded">Expanded survival</option><option value="vr">Original VR survival</option></select></label><label>Loadout<select id="loadout-mode"><option value="all">Full arsenal</option><option value="vr">Original VR random trio</option></select></label><label>Starting weapon<select id="starting-weapon"></select></label><label class="check"><input type="checkbox" id="auto-fire"> Gaze / crosshair auto-fire</label></div>
 <button id="play" class="primary" disabled>Loading original assets…</button><p id="loading-status" role="status">Preparing the arena</p><button id="enter-vr" disabled>Checking VR support…</button></section></div>
 <div class="menu-actions"><button id="settings-open">Controls & settings</button><span>GAMEPAD · KEYBOARD · TOUCH</span></div>
+<footer class="creator-credit" aria-label="Original game credits"><strong>Original Puppet War by Twindigo · Oren Ben Tov</strong><span>A community recompilation, made with respect and gratitude for the original creators and their work.</span></footer>
 </div></main>
 <section id="pause-menu" class="modal" aria-labelledby="pause-title" hidden><div class="card"><img class="pause-logo" src="assets/menu/logo.png" alt="Puppet War F.P.S." width="256" height="128"><h2 id="pause-title">Paused.</h2><p id="pause-detail">Your run is waiting.</p><button class="primary" id="resume">Resume</button><button id="pause-loadout">Change weapon</button><button id="pause-settings">Controls & settings</button><button id="restart">Restart run</button><button id="main-menu">Back to arenas</button></div></section>
 <section id="settings" class="modal" hidden><div class="card settings-card"><span class="eyebrow">MAKE YOURSELF COMFORTABLE</span><h2>Controls & settings</h2><p id="pad-details">Press a button on your controller to connect.</p>

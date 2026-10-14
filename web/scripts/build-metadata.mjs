@@ -19,7 +19,7 @@ for(let offset=2;offset+4<image.length;){
  offset+=length;
 }
 if(!width||!height)throw new Error('Sharing thumbnail has invalid dimensions');
-const repository=process.env.GITHUB_REPOSITORY||'CPritchard007/puppet_wars_recomp';
+const repository=process.env.GITHUB_REPOSITORY||'CPritchard007/puppet-wars-recomp';
 const [owner,name]=repository.split('/');
 const defaultUrl=`https://${owner.toLowerCase()}.github.io/${name.toLowerCase()===`${owner.toLowerCase()}.github.io`?'':`${name}/`}`;
 const site=new URL(process.env.SITE_URL||defaultUrl);

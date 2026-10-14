@@ -1,0 +1,18 @@
+import { chromium } from '@playwright/test';
+import { mkdir } from 'node:fs/promises';
+await mkdir('artifacts',{recursive:true});
+const browser=await chromium.launch({channel:'chrome',headless:true});
+const page=await browser.newPage({viewport:{width:1440,height:900}});
+const errors=[];page.on('pageerror',e=>errors.push(e.message));
+await page.goto('http://127.0.0.1:5173');
+await page.locator('#play').waitFor({state:'visible'});
+await page.waitForFunction(()=>window.puppetDebug?.getState().mode==='menu',{timeout:30000});
+console.log('MENU',await page.evaluate(()=>window.puppetDebug.getState()));
+await page.screenshot({path:'artifacts/menu.png'});
+await page.locator('#settings-open').click();await page.locator('#touch-toggle').check();await page.locator('#settings-close').click();
+await page.locator('#play').click();await page.waitForFunction(()=>window.puppetDebug.getState().mode==='playing');
+await page.waitForTimeout(2800);
+console.log('PLAY',await page.evaluate(()=>window.puppetDebug.getState()));
+await page.screenshot({path:'artifacts/game.png'});
+console.log('DIAGNOSTICS',await page.evaluate(()=>window.puppetDiagnostics.getEntries()));console.log('PAGE ERRORS',errors);
+await browser.close();

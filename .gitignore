@@ -1,0 +1,25 @@
+.tools/
+**/Library/
+**/Temp/
+**/Obj/
+**/Logs/
+**/UserSettings/
+.DS_Store
+
+web/node_modules/
+web/dist/
+artifacts/
+web/artifacts/
+**/__pycache__/
+
+# Original game packages and reproducible extraction output (kept locally).
+*.apk
+*.ipa
+recovered/
+
+# Local configuration and test-run output.
+.env
+.env.*
+!.env.example
+web/test-results/
+web/playwright-report/

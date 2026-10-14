@@ -1,0 +1,2 @@
+import {chromium} from '@playwright/test';import assert from 'node:assert/strict';
+const browser=await chromium.launch({channel:'chrome',headless:true});try{const page=await browser.newPage({viewport:{width:1200,height:500}}),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('http://127.0.0.1:5173/tests/pickup-preview.html');await page.waitForSelector('body[data-ready="true"]');await page.screenshot({path:'artifacts/original-pickups.png'});assert.deepEqual(errors,[]);console.log('PASS original animated pickup render');}finally{await browser.close();}

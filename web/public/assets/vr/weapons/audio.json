@@ -1,0 +1,13 @@
+{
+  "ak47": "assets/vr/weapons/ak47.wav",
+  "flamethrower": "assets/vr/weapons/flamethrower.wav",
+  "leafblower": "assets/vr/weapons/leafblower.wav",
+  "katana": "assets/vr/weapons/katana.wav",
+  "cake": "assets/vr/weapons/cake.wav",
+  "redbutton": "assets/vr/weapons/redbutton.wav",
+  "Game0": "assets/vr/weapons/Game0.ogg",
+  "Game1": "assets/vr/weapons/Game1.ogg",
+  "Game2": "assets/vr/weapons/Game2.ogg",
+  "MusicNight": "assets/vr/weapons/MusicNight.ogg",
+  "MainMenu1": "assets/vr/weapons/MainMenu1.ogg"
+}

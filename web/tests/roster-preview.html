@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8"><title>Recovered enemy roster verification</title><style>body{margin:0;background:#18222b;color:white;font:18px system-ui}header{position:absolute;top:16px;left:24px}canvas{display:block}</style><header>Original enemy models • animation and material verification</header><div hidden><div id="diagnostics"></div><div id="error-list"></div><div id="error-count"></div><div id="show-errors"></div><div id="close-errors"></div><div id="copy-errors"></div><div id="download-errors"></div><div id="diagnostic-status"></div></div><script type="module">
+import * as THREE from 'three';import {loadRoster} from '/src/character-roster.js';import {geometry} from '/src/world.js';
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;document.body.append(renderer.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color('#18222b');const camera=new THREE.OrthographicCamera(-24,24,16,-16,.1,100);camera.position.set(0,12,50);camera.lookAt(0,12,0);
+const loader=new THREE.TextureLoader(),cache=new Map();async function texture(url){if(!cache.has(url))cache.set(url,loader.loadAsync('/'+url).then(t=>{t.colorSpace=THREE.SRGBColorSpace;return t;}));return cache.get(url);}
+// Asset URLs are relative to the production root.
+const base=document.createElement('base');base.href='/';document.head.append(base);
+const roster=await loadRoster(geometry,texture);const actors=[];
+for(const [i,type]of Object.keys(roster.templates).entries()){
+ const actor=roster.create(type);actor.position.set(-19+(i%6)*7.6,18-Math.floor(i/6)*9,0);scene.add(actor);actor.play('run',0);actor.update(.12);actors.push(actor);
+ const c=document.createElement('canvas');c.width=256;c.height=64;const ctx=c.getContext('2d');ctx.fillStyle='white';ctx.font='30px sans-serif';ctx.textAlign='center';ctx.fillText(type,128,43);const map=new THREE.CanvasTexture(c);const label=new THREE.Sprite(new THREE.SpriteMaterial({map,depthTest:false}));label.scale.set(5,1.25,1);label.position.set(actor.position.x,actor.position.y-.8,0);scene.add(label);
+}
+window.rosterPreview={actors,roster,scene,camera,renderer};renderer.render(scene,camera);document.body.dataset.ready='true';
+</script>

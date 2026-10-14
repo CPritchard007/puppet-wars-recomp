@@ -41,3 +41,67 @@ body:has(#menu:not([hidden])) header button{background:#243800d9;border-color:#b
 #pause-menu button:hover{background:#a0ba10;transform:translateY(-1px)}#pause-menu #main-menu:hover{background:#a12c20}
 #pause-menu button:active{transform:translateY(2px)}#pause-menu button:focus-visible{outline:3px solid white;outline-offset:4px}
 @media(max-height:650px){#pause-menu{padding:16px}#pause-menu .card{padding:16px 24px 20px}.pause-logo{width:140px}#pause-menu h2{font-size:24px}#pause-menu #pause-detail{margin-bottom:12px}#pause-menu button{margin-top:9px;padding:9px 12px}#pause-menu #resume{padding:10px}}
+/* Original 480×320 touch layout, with a full-surface swipe camera. */
+html,body{width:100%;height:100%;overscroll-behavior:none}
+body[data-mode="playing"]{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#game,#weapon,#touch-controls,#touch-controls *{touch-action:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+#touch-controls{inset:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);pointer-events:auto;user-select:none}
+#look-area{position:absolute;inset:0;z-index:0}
+#move-stick{left:7.292%;bottom:9.375%;width:12.5%;height:18.75%;border:0;border-radius:0;background:url('../assets/touch/pad.png') center/100% 100% no-repeat;z-index:1;pointer-events:none;opacity:.75}
+#move-stick i{width:100%;height:100%;border:0;border-radius:0;background:url('../assets/touch/nose.png') center/contain no-repeat}
+.touch-actions{inset:0;pointer-events:none!important;display:block}
+.touch-actions button{position:absolute;pointer-events:auto;border:1px solid #ffed8d88;color:#fff5a8;text-shadow:1px 1px #000;font-size:clamp(10px,2.2vh,16px);padding:4px;border-radius:12px;background:#1b294980}
+.touch-actions [data-touch="fire"]{right:0;bottom:3.125%;width:18.75%;height:28.125%;border:0;background:url('../assets/touch/fire.png') center/contain no-repeat;color:transparent;text-shadow:none;opacity:.75}
+.touch-actions [data-touch="fire"].pressed{opacity:1;filter:brightness(1.3)}
+.touch-actions [data-touch="switch"]{right:.625%;top:1.875%;width:14.58%;height:17.19%}
+.touch-actions [data-touch="aim"]{right:0;bottom:59.375%;width:14.58%;height:16%}
+.touch-actions [data-touch="reload"]{right:16%;top:2%;width:13%;height:12%}
+.touch-actions [data-touch="jump"]{left:37%;bottom:3%;width:12%;height:10%}
+.touch-actions [data-touch="teleport"]{left:51%;bottom:3%;width:15%;height:10%}
+body.touch-playing header{z-index:8;pointer-events:none;padding:env(safe-area-inset-top) 8px}
+body.touch-playing header .wordmark,body.touch-playing #controller-status,body.touch-playing #show-errors{display:none}
+body.touch-playing header .header-right{margin-right:auto;margin-left:0}
+body.touch-playing #pause{pointer-events:auto;font-size:14px;min-height:44px}
+body.touch-playing #hud{pointer-events:none;inset:10px 17% auto 17%;font-size:10px}
+body.touch-playing #hud .hud-left,body.touch-playing #hud .hud-right{width:100px}
+body.touch-playing #health,body.touch-playing #ammo{font-size:24px}
+body.touch-playing #reload-status,body.touch-playing #hud .hud-center{display:none}
+body.touch-playing .health-track{width:85px}
+body[data-mode="over"] #pause-menu{backdrop-filter:none;background:#071a2040;align-items:flex-end;justify-content:flex-end}
+body[data-mode="over"] #pause-menu .card{margin:0;width:min(350px,45vw)}
+@media(pointer:coarse){input,select,textarea{font-size:16px!important}}
+html{touch-action:pan-y}
+body.touch-playing #hud{right:32%}
+body.touch-playing #pause kbd{display:none}
+body:not(.touch-extended) .touch-actions [data-touch="reload"],body:not(.touch-extended) .touch-actions [data-touch="jump"],body:not(.touch-extended) .touch-actions [data-touch="teleport"]{display:none}
+body.touch-left #move-stick{left:81.25%}
+body.touch-left .touch-actions [data-touch="fire"]{left:2.083%;right:auto}
+/* Episode 2 PackedSprite HUD. Artwork is decoded from the original atlases. */
+body{--hud-u:min(.208333vw,.3125dvh)}
+body[data-mode=playing] header{background:none;padding:0;z-index:8}
+body[data-mode=playing] header .wordmark,body[data-mode=playing] #controller-status{display:none}
+body[data-mode=playing] #pause{position:fixed;left:max(env(safe-area-inset-left),0px);top:max(env(safe-area-inset-top),0px);width:calc(44 * var(--hud-u));height:calc(50 * var(--hud-u));min-width:44px;min-height:44px;padding:0;border:0;border-radius:0;background: url('../assets/hud/pause.png') center/contain no-repeat;color:transparent;font-size:0}
+body[data-mode=playing] #pause kbd{display:none}
+body[data-mode=playing] #show-errors{display:block;position:fixed;left:max(8px,env(safe-area-inset-left));bottom:max(4px,env(safe-area-inset-bottom));padding:3px 6px;font-size:9px;background:#10242a80}
+#hud,body.touch-playing #hud{inset:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);display:block}
+#hud .hud-left,body.touch-playing #hud .hud-left{position:absolute;left:calc(44 * var(--hud-u));top:calc(12 * var(--hud-u));width:calc(150 * var(--hud-u));height:calc(20 * var(--hud-u))}
+#hud .hud-left label,#hud #health{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+#hud .health-track{position:absolute;inset:0;width:100%;height:100%;margin:0;background:url('../assets/hud/health-back.png') center/100% 100% no-repeat}
+#hud .health-track::after{content:'';position:absolute;inset:0;background:url('../assets/hud/health-top.png') center/100% 100% no-repeat;pointer-events:none}
+#hud .health-track i{position:absolute;left:2%;top:13%;max-width:96%;height:74%;background:#f00;mask:url('../assets/hud/health-fill.png') left center/100% 100% no-repeat}
+#hud .hud-right,body.touch-playing #hud .hud-right{position:absolute;right:1.5%;top:2%;width:calc(60 * var(--hud-u));height:calc(49 * var(--hud-u));background:url('../assets/hud/slot.png') center/100% 100% no-repeat;text-align:center}
+#weapon-icon{position:absolute;width:65%;height:65%;object-fit:contain;left:17.5%;top:4%}
+#hud #weapon-name{position:absolute;right:0;top:calc(66 * var(--hud-u));font-size:clamp(9px,calc(8 * var(--hud-u)),13px);letter-spacing:.5px;white-space:nowrap;color:#fff3a7}
+#hud #ammo,body.touch-playing #hud #ammo{position:absolute;top:72%;width:100%;font-size:clamp(11px,calc(11 * var(--hud-u)),20px);line-height:1;color:#fff6ad}
+#hud #ammo small{font-size:.65em;color:#fff}
+#hud #reload-status{position:absolute;right:0;top:calc(78 * var(--hud-u));white-space:nowrap;font-size:9px}
+#hud .hud-center{position:absolute;top:calc(8 * var(--hud-u));left:45%;transform:translateX(-50%);gap:3px}
+#hud .hud-center strong{font-size:10px}#hud .hud-center>span{font-size:10px;letter-spacing:1px}
+#crosshair{width:calc(33 * var(--hud-u));height:calc(33 * var(--hud-u));background:url('../assets/hud/crosshair.png') center/contain no-repeat}
+#crosshair i,#crosshair b{display:none}
+#crosshair.hit{filter:sepia(1) saturate(6);transform:translate(-50%,-50%) scale(1.15)}
+body.touch-playing .touch-actions button[data-touch=switch]{color:transparent;text-shadow:none;border:0;background:none;box-shadow:none}
+
+#hud .health-track::before{content:"";position:absolute;z-index:1;left:2%;right:2%;top:0;height:55%;background:url("../assets/hud/health-highlight.png") center/100% 100% no-repeat;pointer-events:none}
+
+.creator-credit{margin:18px auto 0;max-width:680px;padding:12px 16px;text-align:center;color:#fff7c2;background:#143300b8;border-top:1px solid #c5f00066;font-size:12px;line-height:1.5}.creator-credit strong,.creator-credit span{display:block}.creator-credit strong{color:#ffe600}.creator-credit span{margin-top:3px;font-size:11px}

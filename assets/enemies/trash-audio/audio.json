@@ -1,0 +1,7 @@
+{
+  "trashAttack": "assets/enemies/trash-audio/trashAttack.wav",
+  "trashDeath": "assets/enemies/trash-audio/trashDeath.wav",
+  "trashHit0": "assets/enemies/trash-audio/trashHit0.wav",
+  "trashHit1": "assets/enemies/trash-audio/trashHit1.wav",
+  "trashHit2": "assets/enemies/trash-audio/trashHit2.wav"
+}

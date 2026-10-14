@@ -31548,6 +31548,219 @@ var WebGLRenderer = class {
 	}
 };
 //#endregion
+//#region src/defeat.js
+var DefeatPresentation = class {
+	constructor(camera) {
+		this.camera = camera;
+		this.voices = /* @__PURE__ */ new Map();
+		this.age = 0;
+		this.active = false;
+	}
+	start(sim, clip) {
+		this.stop();
+		this.active = true;
+		this.clip = clip;
+		this.age = 0;
+		this.position = this.camera.position.clone();
+		this.rotation = this.camera.quaternion.clone();
+		this.yaw = sim.yaw;
+	}
+	stop() {
+		for (const { source, gain } of this.voices.values()) {
+			source.stop();
+			source.disconnect();
+			gain.disconnect();
+		}
+		this.voices.clear();
+		this.active = false;
+	}
+	update(dt, sim, { audio, buffers, volume, vr = false }) {
+		if (!this.active) return;
+		this.age += dt;
+		if (!vr && this.clip) {
+			const f = this.clip.frames.find((f) => f.time >= Math.min(this.age, this.clip.duration)) || this.clip.frames.at(-1), offset = new Vector3(...f.position).applyAxisAngle(new Vector3(0, 1, 0), this.yaw);
+			this.camera.position.copy(this.position).add(offset);
+			this.camera.position.y = Math.max((sim.floorY || 0) + .3, this.camera.position.y);
+			this.camera.quaternion.copy(this.rotation).multiply(new Quaternion(...f.rotation).normalize());
+			this.camera.fov = 65;
+			this.camera.updateProjectionMatrix();
+		}
+		const alive = sim.enemies.filter((e) => e.health > 0);
+		for (const e of alive) {
+			if (e.victoryDelay > 0) continue;
+			const buffer = buffers[e.type + "Laugh"] || buffers.crowdLaugh;
+			if (!audio || !buffer || this.voices.has(e.id)) continue;
+			const source = audio.createBufferSource(), gain = audio.createGain();
+			source.buffer = buffer;
+			source.loop = true;
+			source.connect(gain);
+			gain.connect(audio.destination);
+			source.start();
+			this.voices.set(e.id, {
+				source,
+				gain,
+				enemy: e
+			});
+		}
+		for (const { gain, enemy } of this.voices.values()) {
+			const distance = Math.hypot(enemy.x - sim.player.x, enemy.z - sim.player.z);
+			gain.gain.value = volume * .6 / Math.sqrt(Math.max(1, alive.length)) / (1 + distance / 20);
+		}
+	}
+};
+//#endregion
+//#region src/touch-controls.js
+function movementAt(x, y) {
+	const dx = Math.max(-1, Math.min(1, (x - 65) / 30)), dy = Math.max(-1, Math.min(1, (y - 60) / 30)), length = Math.hypot(dx, dy) || 1, amount = Math.max(Math.abs(dx), Math.abs(dy));
+	return {
+		x: dx / length * amount,
+		y: -dy / length * amount,
+		dx,
+		dy
+	};
+}
+var EpisodeTouch = class {
+	constructor(input, element) {
+		this.input = input;
+		this.element = element;
+		this.pointers = /* @__PURE__ */ new Map();
+		this.pulses = /* @__PURE__ */ new Set();
+		this.delta = {
+			x: 0,
+			y: 0
+		};
+		this.aim = false;
+		for (const name of [
+			"pointerdown",
+			"pointermove",
+			"pointerup",
+			"pointercancel",
+			"lostpointercapture"
+		]) element.addEventListener(name, (e) => this.handle(e), { passive: false });
+	}
+	point(e) {
+		const r = this.element.getBoundingClientRect();
+		return {
+			x: (e.clientX - r.left) / r.width * 480,
+			y: (r.bottom - e.clientY) / r.height * 320
+		};
+	}
+	handle(e) {
+		if (!this.input.active) return;
+		e.preventDefault();
+		const p = this.point(e), action = e.target.closest("[data-touch]")?.dataset.touch;
+		if (e.type === "pointerdown") {
+			const move = (this.input.leftHanded ? p.x > 310 : p.x < 170) && p.y < 150 && !action;
+			if (move && [...this.pointers.values()].some((p) => p.move)) return;
+			const look = !move && ![
+				"switch",
+				"reload",
+				"aim",
+				"jump",
+				"teleport"
+			].includes(action) && ![...this.pointers.values()].some((p) => p.look);
+			this.pointers.set(e.pointerId, {
+				...p,
+				move,
+				look,
+				action
+			});
+			this.element.setPointerCapture(e.pointerId);
+			if (action === "aim") this.aim = !this.aim;
+			if (action === "fire") this.input.touch.fire = true;
+			if ([
+				"reload",
+				"jump",
+				"teleport"
+			].includes(action)) this.pulses.add(action);
+			if (move) this.move(p);
+			this.paint();
+			return;
+		}
+		const previous = this.pointers.get(e.pointerId);
+		if (!previous) return;
+		if (e.type === "pointermove") {
+			if (previous.move) this.move(p);
+			if (previous.look) {
+				this.delta.x += p.x - previous.x;
+				this.delta.y -= p.y - previous.y;
+			}
+			Object.assign(previous, p);
+			return;
+		}
+		if (e.type === "pointerup" && previous.action === "switch") {
+			this.pulses.add("switch");
+			this.aim = false;
+		}
+		this.pointers.delete(e.pointerId);
+		if (previous.move) {
+			this.input.touch.moveX = this.input.touch.moveY = 0;
+			this.element.querySelector("#move-stick i").style.transform = "";
+		}
+		this.input.touch.fire = [...this.pointers.values()].some((p) => p.action === "fire");
+		this.paint();
+	}
+	move(p) {
+		const m = movementAt(p.x - (this.input.leftHanded ? 355 : 0), p.y);
+		this.input.touch.moveX = m.x;
+		this.input.touch.moveY = m.y;
+		this.element.querySelector("#move-stick i").style.transform = `translate(${m.dx * 50}%,${-m.dy * 50}%)`;
+	}
+	paint() {
+		for (const b of this.element.querySelectorAll("[data-touch]")) b.classList.toggle("pressed", b.dataset.touch === "aim" ? this.aim : [...this.pointers.values()].some((p) => p.action === b.dataset.touch));
+	}
+	sample() {
+		const data = {
+			x: this.delta.x,
+			y: this.delta.y,
+			pulses: new Set(this.pulses),
+			aim: this.aim
+		};
+		this.delta = {
+			x: 0,
+			y: 0
+		};
+		this.pulses.clear();
+		return data;
+	}
+	clear() {
+		for (const id of this.pointers.keys()) if (this.element.hasPointerCapture(id)) this.element.releasePointerCapture(id);
+		this.pointers.clear();
+		this.pulses.clear();
+		this.delta = {
+			x: 0,
+			y: 0
+		};
+		this.aim = false;
+		this.input.touch.moveX = this.input.touch.moveY = 0;
+		this.input.touch.fire = false;
+		this.element.querySelector("#move-stick i").style.transform = "";
+		this.paint();
+	}
+};
+function guardGameGestures(isPlaying) {
+	for (const name of [
+		"gesturestart",
+		"gesturechange",
+		"gestureend"
+	]) document.addEventListener(name, (e) => e.preventDefault(), { passive: false });
+	document.addEventListener("touchmove", (e) => {
+		if (isPlaying() || e.touches.length > 1) e.preventDefault();
+	}, { passive: false });
+	document.addEventListener("touchstart", (e) => {
+		if (e.touches.length > 1) e.preventDefault();
+	}, { passive: false });
+	document.addEventListener("dblclick", (e) => {
+		if (isPlaying()) e.preventDefault();
+	}, { passive: false });
+	document.addEventListener("contextmenu", (e) => {
+		if (isPlaying()) e.preventDefault();
+	});
+	window.addEventListener("wheel", (e) => {
+		if (isPlaying() && e.ctrlKey) e.preventDefault();
+	}, { passive: false });
+}
+//#endregion
 //#region src/input.js
 var PROFILES = {
 	standard: {
@@ -31634,6 +31847,7 @@ var Input = class {
 			...options.bindings
 		};
 		this.deadzone = options.deadzone ?? .19;
+		this.leftHanded = options.leftHanded ?? false;
 		this.sensitivity = options.sensitivity ?? 1;
 		this.invertY = options.invertY ?? false;
 		this.previous = {};
@@ -31673,69 +31887,11 @@ var Input = class {
 			if (e.button === 2) this.mouse.aim = false;
 		});
 		canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-		this.bindStick("move-stick", "move");
-		this.bindStick("look-stick", "look");
-		for (const action of [
-			"teleport",
-			"fire",
-			"aim",
-			"reload",
-			"switch",
-			"jump"
-		]) {
-			const el = document.querySelector(`[data-touch="${action}"]`);
-			if (!el) continue;
-			const reset = () => {
-				this.touch[action] = false;
-				el.classList.remove("pressed");
-			};
-			el.addEventListener("pointerdown", (e) => {
-				e.preventDefault();
-				el.setPointerCapture(e.pointerId);
-				this.touch[action] = true;
-				el.classList.add("pressed");
-			});
-			el.addEventListener("pointerup", reset);
-			el.addEventListener("pointercancel", reset);
-			el.addEventListener("lostpointercapture", reset);
-		}
-	}
-	bindStick(id, kind) {
-		const el = document.getElementById(id);
-		let pointer = null;
-		const update = (e) => {
-			const r = el.getBoundingClientRect();
-			let x = (e.clientX - r.left - r.width / 2) / (r.width * .36), y = (e.clientY - r.top - r.height / 2) / (r.height * .36);
-			const n = Math.max(1, Math.hypot(x, y));
-			x /= n;
-			y /= n;
-			this.touch[kind + "X"] = x;
-			this.touch[kind + "Y"] = y;
-			el.firstElementChild.style.transform = `translate(${x * 30}px,${y * 30}px)`;
-		};
-		el.addEventListener("pointerdown", (e) => {
-			if (pointer !== null) return;
-			e.preventDefault();
-			pointer = e.pointerId;
-			el.setPointerCapture(pointer);
-			update(e);
-		});
-		el.addEventListener("pointermove", (e) => {
-			if (pointer === e.pointerId) update(e);
-		});
-		const reset = (e) => {
-			if (e.pointerId !== pointer) return;
-			pointer = null;
-			this.touch[kind + "X"] = this.touch[kind + "Y"] = 0;
-			el.firstElementChild.style.transform = "";
-		};
-		for (const event of [
-			"pointerup",
-			"pointercancel",
-			"lostpointercapture"
-		]) el.addEventListener(event, reset);
+		this.episodeTouch = new EpisodeTouch(this, document.getElementById("touch-controls"));
+		guardGameGestures(() => this.active);
 	}
 	clear() {
+		this.episodeTouch?.clear();
 		this.keys.clear();
 		this.mouse = {
 			x: 0,
@@ -31757,16 +31913,19 @@ var Input = class {
 		}
 		this.disconnected = !!this.pad && !pads.some((p) => p.index === this.pad.index);
 		this.pad = pads.find((p) => p.buttons.some((b) => b.pressed)) || pads.find((p) => p.index === this.pad?.index) || pads[0] || null;
-		const p = gamepadState(this.pad, this.bindings, this), k = this.keys, t = this.touch;
+		const p = gamepadState(this.pad, this.bindings, this), k = this.keys, t = this.touch, gesture = this.episodeTouch.sample();
 		const s = {
+			touchMovement: !!(t.moveX || t.moveY),
 			moveX: p.moveX + (k.has("KeyD") || k.has("ArrowRight") ? 1 : 0) - (k.has("KeyA") || k.has("ArrowLeft") ? 1 : 0) + t.moveX,
 			moveY: p.moveY + (k.has("KeyS") || k.has("ArrowDown") ? 1 : 0) - (k.has("KeyW") || k.has("ArrowUp") ? 1 : 0) + t.moveY,
 			lookX: (p.lookX + t.lookX) * this.sensitivity,
 			lookY: (p.lookY + t.lookY * (this.invertY ? -1 : 1)) * this.sensitivity,
+			touchYaw: gesture.x * .5 * Math.PI / 180 * this.sensitivity,
+			touchPitch: gesture.y * .2 * Math.PI / 180 * this.sensitivity * (this.invertY ? -1 : 1),
 			mouseX: this.mouse.x * this.sensitivity,
 			mouseY: this.mouse.y * this.sensitivity * (this.invertY ? -1 : 1),
 			fire: p.fire || this.mouse.fire || k.has("ControlLeft") || t.fire,
-			aim: p.aim || this.mouse.aim || k.has("AltLeft") || t.aim,
+			aim: p.aim || this.mouse.aim || k.has("AltLeft") || t.aim || gesture.aim,
 			teleport: p.teleport || k.has("KeyT") || t.teleport,
 			reload: p.reload || k.has("KeyR") || t.reload,
 			switch: p.switch || k.has("KeyQ") || t.switch,
@@ -31794,6 +31953,7 @@ var Input = class {
 			"left",
 			"right"
 		]) s.pressed[key] = s[key] && !this.previous[key];
+		for (const action of gesture.pulses) s.pressed[action] = true;
 		this.previous = s;
 		this.mouse.x = this.mouse.y = 0;
 		return s;
@@ -31811,10 +31971,18 @@ var Input = class {
 //#endregion
 //#region src/character-roster.js
 function makeClips(rig) {
-	return Object.fromEntries(Object.entries(rig.clips).map(([state, clip]) => [state, new AnimationClip(state, clip.duration, clip.tracks.map((t) => {
-		if (!rig.nodes[t.node]) throw new Error(`${rig.sourceRoot}: unbound ${state} animation`);
-		return new (t.property === "quaternion" ? QuaternionKeyframeTrack : VectorKeyframeTrack)(`bone_${t.node}.${t.property}`, t.times, t.values);
-	}))]));
+	const soldier = /SoldierShooter/.test(rig.sourceRoot);
+	return Object.fromEntries(Object.entries(rig.clips).map(([state, clip]) => {
+		return [state, new AnimationClip(state, soldier && state === "roll" ? 1.1 : soldier && state === "throw" ? 1.5 : clip.duration, clip.tracks.map((t) => {
+			if (!rig.nodes[t.node]) throw new Error(`${rig.sourceRoot}: unbound ${state} animation`);
+			const values = [...t.values];
+			if (soldier && ["roll", "throw"].includes(state) && t.property === "position" && rig.nodes[t.node].name === "RIG_P_ PelvisBone01") for (let i = 0; i < values.length; i += 3) {
+				values[i] = values[0];
+				values[i + 2] = values[2];
+			}
+			return new (t.property === "quaternion" ? QuaternionKeyframeTrack : VectorKeyframeTrack)(`bone_${t.node}.${t.property}`, t.times, values);
+		})).trim()];
+	}));
 }
 var RecoveredCharacter = class extends Group {
 	constructor(template) {
@@ -31882,6 +32050,10 @@ var RecoveredCharacter = class extends Group {
 		const scale = this.rig.height / height, [sx, , sz] = this.rig.proportions;
 		this.display.scale.set(scale * sx, scale, scale * sz);
 		this.display.position.set(-(bounds.min.x + bounds.max.x) * scale * sx / 2, -bounds.min.y * scale, -(bounds.min.z + bounds.max.z) * scale * sz / 2);
+		if (this.modelType === "trash") {
+			this.display.scale.fromArray(this.rig.sourceScale);
+			this.display.position.set(0, 0, 0);
+		}
 		this.height = this.rig.height;
 		this.update(0);
 	}
@@ -31898,10 +32070,13 @@ var RecoveredCharacter = class extends Group {
 	update(dt, state = this.state, hitVersion = this.hitVersion, event = this.lastEvent) {
 		if (this.disposed) return;
 		if (state === "death") this.play("death", .08);
-		else if (hitVersion !== this.hitVersion) {
+		else if (state === "celebrate") this.play("celebrate", .3, event !== this.lastEvent);
+		else if (state === "roll") this.play("roll", .06, event !== this.lastEvent);
+		else if (hitVersion !== this.hitVersion && state !== "roll" && this.modelType !== "trash") {
 			this.hitVersion = hitVersion;
 			this.play("hit", .06, true);
 		} else if (!(state === "cover" && this.state === "throw" && this.actions.throw.time < this.template.clips.throw.duration - .01) && (this.state !== "hit" || this.actions.hit.time >= this.template.clips.hit.duration - .01)) this.play(state, .12, event !== this.lastEvent);
+		this.hitVersion = hitVersion;
 		this.lastEvent = event;
 		for (const m of this.meshes) if (m.userData.role === "umbrella") m.visible = state === "defend";
 		this.mixer.update(Math.max(0, dt));
@@ -32005,6 +32180,8 @@ async function loadRoster(geometry, texture, onProgress) {
 	};
 }
 function characterAnimation(enemy, actor) {
+	if (enemy.state === "victory") return enemy.animation;
+	if (enemy.type === "trash") return enemy.state === "trashShoot" ? "throw" : "idle";
 	const state = {
 		throw: "throw",
 		coverWait: "cover",
@@ -32026,8 +32203,114 @@ function characterAnimation(enemy, actor) {
 	return actor.actions[enemy.animation] ? enemy.animation : "idle";
 }
 function characterFacing(enemy, player, current) {
+	if (enemy.type === "trash" && Number.isFinite(enemy.trashFacing)) return enemy.trashFacing;
+	if ((enemy.state === "roll" || enemy.animation === "roll") && Number.isFinite(enemy.rollFacing)) return enemy.rollFacing;
 	if (enemy.animation === "death" || enemy.state === "down" || enemy.state === "rise" || enemy.animation === "knockdown" || enemy.animation === "recover") return current;
 	return enemy.animation === "run" && Number.isFinite(enemy.heading) ? enemy.heading : Math.atan2(player.x - enemy.x, player.z - enemy.z);
+}
+//#endregion
+//#region src/trash-enemy.js
+var TRASH_ATTACK = {
+	duration: 4.566667,
+	releaseTimes: [
+		1,
+		1.3,
+		1.8,
+		2.3
+	],
+	range: 100,
+	startDelay: .2
+};
+function updateTrash(s, e, dt, emit) {
+	if (e.anchor) {
+		e.x = e.anchor.x;
+		e.z = e.anchor.z;
+	}
+	e.hidden = false;
+	e.shield = false;
+	e.y = (e.anchor?.y ?? s.floorY ?? 0) - (s.floorY ?? 0);
+	if (s.player.health <= 0) {
+		e.animation = "idle";
+		return;
+	}
+	if (e.state !== "trashShoot") {
+		e.animation = "idle";
+		if (e.age < TRASH_ATTACK.startDelay) return;
+		const distance = Math.hypot(s.player.x - e.x, s.player.z - e.z);
+		e.playerClose ||= distance < TRASH_ATTACK.range;
+		if (!e.playerClose) return;
+		e.state = "trashShoot";
+		e.attackAge = 0;
+		e.shots = 0;
+		e.actionVersion = (e.actionVersion || 0) + 1;
+		e.trashFacing = Math.atan2(s.player.x - e.x, s.player.z - e.z);
+		const randomInt = (lo, hi) => lo + Math.floor(s.random() * (hi - lo));
+		e.launchSpeed = distance - (distance >= 60 ? randomInt(10, 25) : distance > 30 ? randomInt(15, 20) : randomInt(5, 15));
+		e.launchLift = distance >= 60 ? randomInt(4, 8) : distance > 30 ? randomInt(4, 6) : randomInt(2, 4);
+		s.events.push("trashAttack");
+	} else e.attackAge += dt;
+	e.animation = "attack";
+	while (e.shots < TRASH_ATTACK.releaseTimes.length && e.attackAge + 1e-8 >= TRASH_ATTACK.releaseTimes[e.shots]) {
+		if (s.arena.key !== "corridor" || Math.hypot(s.player.x - e.x, s.player.z - e.z) < 60) emit(s, e);
+		e.shots++;
+	}
+	if (e.attackAge >= TRASH_ATTACK.duration) {
+		e.state = "trashReady";
+		e.animation = "idle";
+	}
+}
+function townTrashSites(player) {
+	if (player.z > 85 && player.x > -36) return [
+		[
+			-17.3,
+			1,
+			36
+		],
+		[
+			25.4,
+			1,
+			61.14
+		],
+		[
+			12.4,
+			1,
+			98
+		]
+	];
+	if (player.x <= -36) return [
+		[
+			-47,
+			1,
+			70.2
+		],
+		[
+			25.4,
+			1,
+			61.14
+		],
+		[
+			12.4,
+			1,
+			98
+		]
+	];
+	return [
+		[
+			-15.7,
+			1,
+			-19
+		],
+		[
+			26,
+			1,
+			-3.6
+		],
+		[
+			-17.5,
+			1,
+			36.3
+		]
+	];
 }
 //#endregion
 //#region src/enemy-navigation.js
@@ -32161,10 +32444,11 @@ var ENEMY_TYPES = {
 		variant: 2,
 		coverStops: 0
 	}),
-	trash: profile("Trash thrower", "EnemyAI8Trash", 0, 115, {
+	trash: profile("Trash thrower", "EnemyAI8Trash", 0, 100, {
 		ranged: true,
+		damage: 4,
 		projectile: "tomato",
-		shotDelay: 2,
+		shotDelay: 1,
 		stationary: true,
 		variant: 2
 	}),
@@ -32222,7 +32506,7 @@ function createEnemy(type, pos, id, wave = 1) {
 		flash: 0,
 		hitVersion: 0,
 		animation: "run",
-		state: p.stationary ? "hidden" : "patrol",
+		state: p.stationary ? "trashReady" : "patrol",
 		timer: p.stationary ? .5 : 0,
 		age: 0,
 		coverLeft: p.coverStops,
@@ -32263,6 +32547,7 @@ function enemyHit(s, e, damage) {
 	const p = ENEMY_TYPES[e.type];
 	if (!p) return damage;
 	if (e.shield || e.hidden || e.state === "rise" || e.state === "down") return 0;
+	if (e.type === "trash") return damage;
 	if (p.revives && damage >= e.health && e.revives > 0) {
 		e.revives--;
 		e.health = e.maxHealth * .65;
@@ -32272,10 +32557,22 @@ function enemyHit(s, e, damage) {
 	}
 	if (e.type === "bomber" && e.state === "fuse") return damage;
 	if (!p.boss) {
-		enter(e, p.roll ? "roll" : "stagger", p.roll ? .7 : 1);
+		if (p.roll) {
+			if (e.state !== "roll") beginSoldierRoll(s, e);
+		} else enter(e, "stagger", 1);
 		e.speed = p.sprint || p.speed;
 	}
 	return damage;
+}
+function beginSoldierRoll(s, e) {
+	e.rollFacing = e.animation === "run" && Number.isFinite(e.heading) ? e.heading : Math.atan2(s.player.x - e.x, s.player.z - e.z);
+	const side = e.side ?? -1;
+	e.side = -side;
+	e.rollDirection = {
+		x: Math.cos(e.rollFacing) * side,
+		z: -Math.sin(e.rollFacing) * side
+	};
+	enter(e, "roll", 1.1);
 }
 function move(s, e, goal, speed, dt, moveBody) {
 	e.repath -= dt;
@@ -32334,7 +32631,7 @@ function sightObstacles(s, e) {
 }
 function fire(s, e, kind) {
 	const p = ENEMY_TYPES[e.type];
-	if (!clearSegment(e, s.player, sightObstacles(s, e))) return;
+	if (e.type !== "trash" && !clearSegment(e, s.player, sightObstacles(s, e))) return;
 	const distance = Math.hypot(e.x - s.player.x, e.z - s.player.z);
 	const duration = Math.max(.55, distance / (kind === "fireball" ? 16 : 12));
 	s.projectiles.push({
@@ -32358,6 +32655,16 @@ function fire(s, e, kind) {
 		damage: p.damage,
 		radius: kind === "fireball" ? 1.5 : 2.3
 	});
+	if (e.type === "trash") {
+		const shot = s.projectiles.at(-1), origin = s.projectileOrigin?.(e);
+		shot.x = origin?.x ?? e.x;
+		shot.z = origin?.z ?? e.z;
+		shot.y = origin?.y ?? e.y + 2.2;
+		shot.ballistic = true;
+		shot.vx = Math.sin(e.trashFacing) * e.launchSpeed;
+		shot.vz = Math.cos(e.trashFacing) * e.launchSpeed;
+		shot.vy = e.launchLift;
+	}
 	s.events.push("enemyShot");
 }
 function melee(s, e) {
@@ -32373,6 +32680,10 @@ function updateEnemy(s, e, dt, moveBody) {
 	e.flash = Math.max(0, e.flash - dt);
 	e.attack = Math.max(0, e.attack - dt);
 	e.animation = "idle";
+	if (e.type === "trash") {
+		updateTrash(s, e, dt, fire);
+		return;
+	}
 	const d = Math.hypot(s.player.x - e.x, s.player.z - e.z), visible = clearSegment(e, s.player, sightObstacles(s, e));
 	e.hidden = false;
 	e.shield = false;
@@ -32401,15 +32712,14 @@ function updateEnemy(s, e, dt, moveBody) {
 		return;
 	}
 	if (e.state === "roll") {
-		const side = e.side || 1;
-		move(s, e, {
-			x: e.x + Math.cos(s.yaw) * 4 * side,
-			z: e.z - Math.sin(s.yaw) * 4 * side
-		}, 6, dt, moveBody);
-		if (e.timer <= 0) {
-			e.side = -side;
-			enter(e, "patrol");
-		}
+		e.animation = "roll";
+		const direction = e.rollDirection || {
+			x: 1,
+			z: 0
+		};
+		const travel = 4 / 1.1 * Math.min(dt, Math.max(0, e.timer + dt));
+		moveBody(e, direction.x * travel, direction.z * travel, s.bounds, s.obstacles, .65);
+		if (e.timer <= 0) enter(e, "patrol");
 		return;
 	}
 	if (e.state === "windup") {
@@ -32440,7 +32750,8 @@ function updateEnemy(s, e, dt, moveBody) {
 				y: 1,
 				radius: 5,
 				age: 0,
-				kind: "blast"
+				life: 1,
+				kind: "bomberBlast"
 			});
 			s.killEnemy(e, false);
 		}
@@ -32454,7 +32765,8 @@ function updateEnemy(s, e, dt, moveBody) {
 			if (e.shots < (p.burst || 1)) e.timer = p.shotDelay;
 			else {
 				e.shots = 0;
-				enter(e, p.stationary ? "hidden" : "coverWait", p.shotDelay + .3);
+				if (p.roll) beginSoldierRoll(s, e);
+				else enter(e, p.stationary ? "hidden" : "coverWait", p.shotDelay + .3);
 			}
 		}
 		return;
@@ -32640,16 +32952,46 @@ function updateProjectiles(s, dt) {
 	s.projectiles = s.projectiles.filter((p) => {
 		const before = {
 			x: p.x,
+			y: p.y,
 			z: p.z
 		};
 		p.age += dt;
 		const t = Math.min(1, p.age / p.duration);
+		if (p.ballistic) {
+			p.x += p.vx * dt;
+			p.z += p.vz * dt;
+			p.y += p.vy * dt - 4.905 * dt * dt;
+			p.vy -= 9.81 * dt;
+			const obstacles = s.obstacles.filter((b) => !p.ignoredObstacles?.includes(b) && (b.maxY === void 0 || Math.min(before.y, p.y) + (s.floorY || 0) <= b.maxY) && (b.minY === void 0 || Math.max(before.y, p.y) + (s.floorY || 0) >= b.minY)), wall = !clearSegment(before, p, obstacles);
+			const playerHit = p.y >= s.player.y && p.y <= s.player.y + 2.4 && Math.hypot(p.x - s.player.x, p.z - s.player.z) < .8;
+			if (wall || playerHit || p.y <= 0 || p.age >= 3) {
+				if (!wall && (playerHit || Math.hypot(p.x - s.player.x, p.z - s.player.z) < p.radius && s.player.y < 1.5) && clearSegment(p, s.player, obstacles)) s.hurtPlayer(p.damage);
+				s.effects.push({
+					id: ++s.effectId,
+					x: p.x,
+					z: p.z,
+					y: Math.max(.2, p.y),
+					radius: p.radius,
+					age: 0,
+					life: .76,
+					kind: "tomatoImpact"
+				});
+				return false;
+			}
+			return true;
+		}
 		p.x = p.start.x + (p.target.x - p.start.x) * t;
 		p.z = p.start.z + (p.target.z - p.start.z) * t;
 		p.y = 2.2 * (1 - t) + Math.sin(t * Math.PI) * (p.kind === "fireball" ? 0 : 3);
 		const wall = !clearSegment(before, p, s.obstacles.filter((b) => !p.ignoredObstacles?.includes(b)));
 		if (wall || t >= 1) {
-			if (!wall && Math.hypot(p.x - s.player.x, p.z - s.player.z) < p.radius && s.player.y < 1.5 && clearSegment(p, s.player, s.obstacles)) s.hurtPlayer(p.damage);
+			if (!wall && Math.hypot(p.x - s.player.x, p.z - s.player.z) < p.radius && s.player.y < 1.5 && clearSegment(p, s.player, s.obstacles)) {
+				s.hurtPlayer(p.damage);
+				if (p.kind === "fish") s.fishSplat = {
+					age: 0,
+					rotation: s.random() * Math.PI * 2
+				};
+			}
 			s.effects.push({
 				id: ++s.effectId,
 				x: p.x,
@@ -32663,7 +33005,7 @@ function updateProjectiles(s, dt) {
 		}
 		return true;
 	});
-	s.effects = s.effects.filter((e) => (e.age += dt) < .45);
+	s.effects = s.effects.filter((e) => (e.age += dt) < (e.life ?? .45));
 }
 function waveTypes(wave) {
 	const basic = [
@@ -32682,33 +33024,6 @@ function waveTypes(wave) {
 }
 //#endregion
 //#region src/enemy-effects.js
-function labelEnemy(actor, type) {
-	const canvas = document.createElement("canvas");
-	canvas.width = 256;
-	canvas.height = 64;
-	const ctx = canvas.getContext("2d");
-	ctx.fillStyle = "rgba(8,16,22,.8)";
-	ctx.fillRect(0, 0, 256, 64);
-	ctx.fillStyle = "#fff";
-	ctx.font = "bold 24px sans-serif";
-	ctx.textAlign = "center";
-	ctx.fillText(ENEMY_TYPES[type].name, 128, 40);
-	const map = new CanvasTexture(canvas);
-	map.colorSpace = SRGBColorSpace;
-	const label = new Sprite(new SpriteMaterial({
-		map,
-		depthWrite: false
-	}));
-	label.position.y = (actor.height || 3.3) + .5;
-	label.scale.set(2.6, .65, 1);
-	actor.add(label);
-	const dispose = actor.dispose.bind(actor);
-	actor.dispose = () => {
-		map.dispose();
-		label.material.dispose();
-		dispose();
-	};
-}
 var EnemyEffects = class {
 	constructor(scene, projectiles = {}) {
 		this.scene = scene;
@@ -32768,11 +33083,11 @@ var EnemyEffects = class {
 			}
 			if (m.userData.originalProjectile) {
 				const data = this.projectiles[p.kind].data;
-				const frame = data.frames[Math.floor((p.age ?? sim.time) * data.fps) % data.frames.length];
+				const frame = data.frames[["bomberBlast", "tomatoImpact"].includes(p.kind) ? Math.min(data.frames.length - 1, Math.floor(p.age * data.fps)) : Math.floor((p.age ?? sim.time) * data.fps) % data.frames.length];
 				const [u, v, w, h] = frame.uv, [left, top, right, bottom] = frame.bounds;
 				m.material.map.repeat.set(w, h);
 				m.material.map.offset.set(u, v);
-				const scale = ["tomato", "snowball"].includes(p.kind) ? .45 : p.kind === "grenade" ? .65 : 1.15;
+				const scale = p.kind === "tomatoImpact" ? .65 : p.kind === "bomberBlast" ? p.radius : ["tomato", "snowball"].includes(p.kind) ? .45 : p.kind === "grenade" ? .65 : 1.15;
 				m.scale.set((right - left) * scale, (top - bottom) * scale, 1);
 				m.center.set(-left / (right - left), -bottom / (top - bottom));
 			}
@@ -32801,6 +33116,38 @@ var EnemyEffects = class {
 	}
 };
 //#endregion
+//#region src/screen-effects.js
+var tintedAtlases = /* @__PURE__ */ new WeakMap();
+function fishSplatFrame(data, age) {
+	return data.frames[Math.min(data.frames.length - 1, Math.floor(age * data.fps))];
+}
+function drawFishSplat(ctx, asset, splat, width, height) {
+	if (!splat || splat.age >= 2) return;
+	if (!asset) throw new Error("Missing recovered fish screen-splat asset");
+	const source = asset.map.image;
+	let image = tintedAtlases.get(source);
+	if (!image) {
+		image = document.createElement("canvas");
+		image.width = source.width;
+		image.height = source.height;
+		const c = image.getContext("2d");
+		c.drawImage(source, 0, 0);
+		c.globalCompositeOperation = "source-in";
+		c.fillStyle = "rgb(0,208,42)";
+		c.fillRect(0, 0, image.width, image.height);
+		tintedAtlases.set(source, image);
+	}
+	const [u, v, w, h] = fishSplatFrame(asset.data, splat.age).uv;
+	const [left, top, right, bottom] = fishSplatFrame(asset.data, splat.age).bounds;
+	const size = Math.min(width, height) * .55;
+	ctx.save();
+	ctx.translate(width / 2, height / 2);
+	ctx.rotate(splat.rotation);
+	ctx.globalAlpha = .9;
+	ctx.drawImage(image, Math.round(u * image.width), Math.round((1 - v - h) * image.height), Math.max(1, Math.round(w * image.width)), Math.max(1, Math.round(h * image.height)), left * size, -top * size, (right - left) * size, (top - bottom) * size);
+	ctx.restore();
+}
+//#endregion
 //#region src/weapon-animation.js
 function weaponFrame(clips, sim) {
 	let state = "idle", time = sim.time;
@@ -32824,6 +33171,10 @@ function weaponFrame(clips, sim) {
 			state = fire;
 			time = sim.fireAge;
 		}
+	}
+	if (sim.weapon.scopeFov && sim.scopeAge > 0 && !sim.reloading) {
+		state = sim.scopeAge < .5 ? "scope" : "scopeAim";
+		time = sim.scopeAge;
 	}
 	const frames = clips[state];
 	if (!frames?.length) throw new Error(`Missing ${sim.weapon.name} ${state} animation`);
@@ -32850,6 +33201,85 @@ function weaponFrame(clips, sim) {
 		index
 	};
 }
+//#endregion
+//#region src/extra-weapons.js
+var EXTRA_WEAPONS = [
+	{
+		id: "dualuzis",
+		name: "DUAL UZIS",
+		damage: 6,
+		interval: .2,
+		range: 55,
+		capacity: 30,
+		reserve: 300,
+		reload: 2,
+		pellets: 2,
+		automatic: true,
+		dual: true
+	},
+	{
+		id: "smg",
+		name: "SUBMACHINE GUN",
+		damage: 15,
+		interval: .3,
+		range: 55,
+		capacity: 30,
+		reserve: 300,
+		reload: 2,
+		pellets: 1,
+		automatic: true
+	},
+	{
+		id: "m60",
+		name: "M60",
+		damage: 55,
+		interval: .3,
+		range: 50,
+		capacity: 30,
+		reserve: 300,
+		reload: 2,
+		pellets: 1,
+		automatic: true
+	},
+	{
+		id: "bat",
+		name: "BASEBALL BAT",
+		damage: 60,
+		interval: .8,
+		range: 5,
+		capacity: 0,
+		reload: 0,
+		pellets: 1,
+		melee: true,
+		cone: Math.acos(.8),
+		hitDelay: .3
+	},
+	{
+		id: "axe",
+		name: "AXE",
+		damage: 200,
+		interval: 1,
+		range: 6,
+		capacity: 0,
+		reload: 0,
+		pellets: 1,
+		melee: true,
+		cone: Math.acos(.9),
+		hitDelay: .3
+	},
+	{
+		id: "sniper",
+		name: "SNIPER RIFLE",
+		damage: 150,
+		interval: .8,
+		range: 100,
+		capacity: 10,
+		reserve: 100,
+		reload: 2,
+		pellets: 1,
+		scopeFov: 10
+	}
+];
 //#endregion
 //#region src/vr-content.js
 var VR_WEAPONS = [
@@ -32935,7 +33365,11 @@ var VR_WEAPONS = [
 	}
 ];
 function vrSurvivalPhase(arena, spawned) {
-	const phase = spawned < 10 ? 0 : spawned < 40 ? 1 : spawned < 90 ? 2 : 3, chapterTwo = ["lobby", "parking"].includes(arena);
+	const phase = spawned < 10 ? 0 : spawned < 40 ? 1 : spawned < 90 ? 2 : 3, chapterTwo = [
+		"lobby",
+		"parking",
+		"corridor"
+	].includes(arena);
 	const names = [
 		"grunt",
 		"fast",
@@ -32950,6 +33384,34 @@ function vrSurvivalPhase(arena, spawned) {
 		"soldier",
 		"vampire"
 	];
+	if (arena === "snow") return {
+		phase: phase + 1,
+		cap: [
+			4,
+			5,
+			8,
+			10
+		][phase],
+		interval: [
+			3,
+			2,
+			2,
+			1
+		][phase],
+		types: phase === 0 ? [
+			"grunt",
+			"fast",
+			"elf"
+		] : [
+			"grunt",
+			"fast",
+			"elf",
+			"fish",
+			"bomber",
+			"chicken",
+			"strong"
+		]
+	};
 	let indices;
 	if (phase === 0) indices = [spawned % 2];
 	else if (chapterTwo) indices = phase === 1 ? arena === "parking" ? [
@@ -33073,7 +33535,8 @@ var WEAPONS = [
 		cone: Math.acos(.9),
 		hitDelay: .3
 	},
-	...VR_WEAPONS
+	...VR_WEAPONS,
+	...EXTRA_WEAPONS
 ];
 function clamp(n, min, max) {
 	return Math.max(min, Math.min(max, n));
@@ -33099,8 +33562,10 @@ var Simulation = class {
 		maxX: 40,
 		minZ: -40,
 		maxZ: 40
-	}, obstacles = [], coverPoints = [], random = Math.random, canSpawn = () => true, arena = { key: "studio" }, spawnPoints = [], trashSpawnPoints = [], encounterMode = "expanded", loadout = null, startingWeapon = 0 } = {}) {
+	}, obstacles = [], coverPoints = [], random = Math.random, canSpawn = () => true, canOccupySpawn = () => true, deathDurations = {}, projectileOrigin = null, trashSitesForPlayer = null, arena = { key: "studio" }, spawnPoints = [], trashSpawnPoints = [], encounterMode = "expanded", loadout = null, startingWeapon = 0 } = {}) {
+		this.deathDurations = deathDurations;
 		this.trashSpawnPoints = trashSpawnPoints;
+		this.trashSitesForPlayer = trashSitesForPlayer;
 		this.arena = arena;
 		this.spawnPoints = spawnPoints;
 		this.encounterMode = encounterMode;
@@ -33108,6 +33573,8 @@ var Simulation = class {
 		this.startingWeapon = startingWeapon;
 		this.navigation = new EnemyNavigation(bounds, obstacles, coverPoints);
 		this.canSpawn = canSpawn;
+		this.canOccupySpawn = canOccupySpawn;
+		this.projectileOrigin = projectileOrigin;
 		this.spawn = spawn;
 		this.bounds = bounds;
 		this.obstacles = obstacles;
@@ -33133,6 +33600,7 @@ var Simulation = class {
 		this.pickups = [];
 		this.projectiles = [];
 		this.effects = [];
+		this.fishSplat = null;
 		this.effectId = 0;
 		this.weaponIndex = this.startingWeapon;
 		this.ammo = WEAPONS.map((w) => w.capacity);
@@ -33157,8 +33625,13 @@ var Simulation = class {
 		this.fireAge = null;
 		this.cooldown = 0;
 		this.reloading = 0;
-		this.nextWave = 2;
+		this.nextWave = 3;
+		this.waveQueue = [];
+		this.waveSpawnTimer = 0;
+		this.waveSpawnInterval = 3;
+		this.waveLiveCap = 4;
 		this.hurt = 0;
+		this.defeatAge = 0;
 		this.ended = false;
 		this.events = [];
 	}
@@ -33214,8 +33687,8 @@ var Simulation = class {
 				yaw: this.yaw
 			});
 		}
-		if (this.weapon.id === "mop") this.pendingAttacks.push({
-			kind: "mop",
+		if (this.weapon.hitDelay) this.pendingAttacks.push({
+			kind: "melee",
 			delay: this.weapon.hitDelay,
 			weapon: this.weapon,
 			direction: {
@@ -33235,6 +33708,7 @@ var Simulation = class {
 	}
 	killEnemy(enemy, reward = true) {
 		if (enemy.dead) return;
+		if (enemy.type === "trash") this.events.push("trashDeath");
 		enemy.dead = true;
 		enemy.health = 0;
 		enemy.shield = false;
@@ -33242,7 +33716,8 @@ var Simulation = class {
 		this.corpses.push({
 			...enemy,
 			animation: "death",
-			deathAge: 0
+			deathAge: 0,
+			deathDuration: (this.deathDurations[enemy.type === "vampire" && enemy.form === "bat" ? "bat" : enemy.type] ?? 2.45) + .3
 		});
 		if (reward) {
 			this.kills++;
@@ -33271,42 +33746,86 @@ var Simulation = class {
 		enemy.flash = .15;
 		enemy.hitVersion = (enemy.hitVersion || 0) + 1;
 		if (enemy.health <= 0) this.killEnemy(enemy);
+		else if (enemy.type === "trash" && this.time >= (enemy.nextHitSound ?? 0)) {
+			this.events.push("trashHit" + Math.min(2, Math.floor(this.random() * 3)));
+			enemy.nextHitSound = this.time + .15;
+		}
 		return true;
 	}
 	spawnTrash() {
 		if (this.enemies.some((e) => e.type === "trash" && e.health > 0)) return false;
-		const sites = this.trashSpawnPoints.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.z) && p.x > this.bounds.minX && p.x < this.bounds.maxX && p.z > this.bounds.minZ && p.z < this.bounds.maxZ);
+		const sites = (this.trashSitesForPlayer?.(this.player) || this.trashSpawnPoints).filter((p) => Number.isFinite(p.x) && Number.isFinite(p.z) && p.x > this.bounds.minX && p.x < this.bounds.maxX && p.z > this.bounds.minZ && p.z < this.bounds.maxZ);
 		if (!sites.length) return false;
-		const site = sites.sort((a, b) => Math.hypot(a.x - this.player.x, a.z - this.player.z) - Math.hypot(b.x - this.player.x, b.z - this.player.z))[0];
+		const site = sites[Math.min(sites.length - 1, Math.floor(this.random() * sites.length))];
 		const e = createEnemy("trash", site, `trash-${++this.trashSerial}`, Math.max(1, this.wave));
 		e.anchor = { ...site };
+		e.y = (site.y ?? this.floorY ?? 0) - (this.floorY ?? 0);
 		e.siteId = site.id;
 		this.enemies.push(e);
 		return true;
 	}
 	spawnWave() {
+		if (this.waveQueue.length) return;
 		this.wave++;
 		const count = Math.min(4 + this.wave * 2, 24);
-		for (let i = 0; i < count; i++) {
-			const types = waveTypes(this.wave).filter((t) => t !== "trash"), type = types[i % types.length];
-			if (type === "trash") {
-				this.spawnTrash();
-				continue;
-			}
-			let pos = null;
-			for (let attempt = 0; attempt < 100; attempt++) {
-				const x = this.bounds.minX + 3 + this.random() * (this.bounds.maxX - this.bounds.minX - 6), z = this.bounds.minZ + 3 + this.random() * (this.bounds.maxZ - this.bounds.minZ - 6);
-				if (Math.hypot(x - this.player.x, z - this.player.z) > 12 && !blocked(x, z, 1, this.obstacles) && this.canSpawn(x, z, this.player)) {
-					pos = {
-						x,
-						z
-					};
-					break;
-				}
-			}
-			if (pos) this.enemies.push(createEnemy(type, pos, `${this.wave}-${i}`, this.wave));
-		}
+		const types = (this.arena.key === "snow" ? [
+			"grunt",
+			"fast",
+			"elf",
+			"fish",
+			"bomber",
+			"chicken",
+			"strong"
+		] : waveTypes(this.wave)).filter((t) => t !== "trash");
+		this.waveQueue = Array.from({ length: count }, (_, i) => ({
+			type: types[i % types.length],
+			id: `${this.wave}-${i}`
+		}));
+		const phase = Math.min(3, this.wave - 1);
+		this.waveSpawnInterval = [
+			3,
+			2,
+			2,
+			1
+		][phase];
+		this.waveLiveCap = [
+			4,
+			5,
+			8,
+			10
+		][phase];
+		this.waveSpawnTimer = 0;
 		this.events.push("wave");
+	}
+	validSpawnPosition(p) {
+		return validPoint(p, this.bounds, this.obstacles, 1) && this.canOccupySpawn(p.x, p.z) && (this.arena.key !== "corridor" || this.navigation.route(p, this.player).length > 0);
+	}
+	updateWaveSpawns(dt) {
+		if (!this.waveQueue.length || this.ended) return;
+		this.waveSpawnTimer = Math.max(0, this.waveSpawnTimer - dt);
+		if (this.waveSpawnTimer > 1e-8 || this.enemies.filter((e) => e.health > 0 && e.type !== "trash").length >= this.waveLiveCap) return;
+		let pos = null;
+		for (let attempt = 0; attempt < 100; attempt++) {
+			const anchor = attempt < this.spawnPoints.length ? this.spawnPoints[attempt] : null;
+			const x = anchor?.x ?? this.bounds.minX + 3 + this.random() * (this.bounds.maxX - this.bounds.minX - 6), z = anchor?.z ?? this.bounds.minZ + 3 + this.random() * (this.bounds.maxZ - this.bounds.minZ - 6);
+			if (Math.hypot(x - this.player.x, z - this.player.z) > 12 && this.validSpawnPosition({
+				x,
+				z
+			}) && this.canSpawn(x, z, this.player)) {
+				pos = {
+					x,
+					z
+				};
+				break;
+			}
+		}
+		if (!pos) {
+			this.waveSpawnTimer = .5;
+			return;
+		}
+		const next = this.waveQueue.shift();
+		this.enemies.push(createEnemy(next.type, pos, next.id, this.wave));
+		this.waveSpawnTimer = this.waveSpawnInterval;
 	}
 	updateSpecials(dt) {
 		WEAPONS.forEach((w, i) => {
@@ -33318,7 +33837,7 @@ var Simulation = class {
 			a.delay -= dt;
 			if (a.delay > 0 || a.done) continue;
 			a.done = true;
-			if (a.kind === "mop") {
+			if (a.kind === "melee") {
 				let hit = false;
 				const w = a.weapon, d = a.direction;
 				for (const e of this.enemies) {
@@ -33327,7 +33846,7 @@ var Simulation = class {
 					if (length > w.range || length > 0 && (x * d.x + y * d.y + z * d.z) / length < Math.cos(w.cone) || !clearSegment(this.player, e, this.obstacles)) continue;
 					if (this.damageEnemy(e, w.damage)) hit = true;
 				}
-				this.events.push(hit ? "mopHit" : "mopMiss");
+				this.events.push(a.weapon.id + (hit ? "Hit" : "Miss"));
 			}
 			if (a.kind === "redbutton") {
 				for (const e of this.enemies) this.killEnemy(e);
@@ -33404,7 +33923,7 @@ var Simulation = class {
 				x: base.x + (i > candidates.length ? (this.random() - .5) * 10 : 0),
 				z: base.z + (i > candidates.length ? (this.random() - .5) * 10 : 0)
 			};
-			if (validPoint(q, this.bounds, this.obstacles, .8) && Math.hypot(q.x - this.player.x, q.z - this.player.z) > 5) {
+			if (this.validSpawnPosition(q) && Math.hypot(q.x - this.player.x, q.z - this.player.z) > 5) {
 				pos = q;
 				break;
 			}
@@ -33415,10 +33934,21 @@ var Simulation = class {
 			this.spawnTimer = p.interval;
 		} else this.spawnTimer = .5;
 	}
+	updateDefeat(dt) {
+		if (!this.ended) return;
+		this.defeatAge += dt;
+		for (const e of this.enemies) {
+			e.victoryDelay = Math.max(0, e.victoryDelay - dt);
+			if (e.victoryDelay === 0) e.animation = "celebrate";
+		}
+		for (const c of this.corpses) c.deathAge += dt;
+		this.corpses = this.corpses.filter((c) => c.deathAge < (c.deathDuration ?? 2.75));
+	}
 	update(dt, input) {
 		if (this.ended) return;
 		dt = Math.min(.05, Math.max(0, dt));
 		this.time += dt;
+		if (this.fishSplat && (this.fishSplat.age += dt) >= 2) this.fishSplat = null;
 		this.teleportCooldown = Math.max(0, this.teleportCooldown - dt);
 		if (input.fire) {
 			this.triggerTime = this.trigger ? this.triggerTime + dt : dt;
@@ -33432,7 +33962,7 @@ var Simulation = class {
 		this.updateSpecials(dt);
 		if (this.fireAge !== null) this.fireAge += dt;
 		for (const corpse of this.corpses) corpse.deathAge += dt;
-		this.corpses = this.corpses.filter((c) => c.deathAge < 2.75);
+		this.corpses = this.corpses.filter((c) => c.deathAge < (c.deathDuration ?? 2.75));
 		this.cooldown = Math.max(0, this.cooldown - dt);
 		this.hurt = Math.max(0, this.hurt - dt);
 		if (this.reloading > 0) {
@@ -33446,10 +33976,15 @@ var Simulation = class {
 		}
 		if (input.pressed.reload) this.reload();
 		if (input.pressed.switch) this.switchWeapon();
-		this.yaw -= input.lookX * 2.3 * dt + input.mouseX * .002;
-		this.pitch = clamp(this.pitch - input.lookY * 1.7 * dt - input.mouseY * .002, -1.25, 1.25);
+		this.scopeAge = input.aim && this.weapon.scopeFov && !this.reloading ? (this.scopeAge || 0) + dt : 0;
+		const aimScale = this.scopeAge >= .5 ? .2 : 1;
+		this.yaw -= (input.touchYaw || 0) * (this.scopeAge >= .5 ? .3 : 1);
+		if (input.touchPitch) this.pitch = clamp(this.pitch - input.touchPitch, -20 * Math.PI / 180, 15 * Math.PI / 180);
+		this.yaw -= (input.lookX * 2.3 * dt + input.mouseX * .002) * aimScale;
+		this.pitch = clamp(this.pitch - (input.lookY * 1.7 * dt + input.mouseY * .002) * aimScale, -1.25, 1.25);
 		const speed = input.moveY < 0 ? 10 : 6;
-		const x = input.moveX * 6, z = input.moveY * speed;
+		const touchSpeed = Math.abs(input.moveY) > Math.abs(input.moveX) ? speed : 6;
+		const x = input.moveX * (input.touchMovement ? touchSpeed : 6), z = input.moveY * (input.touchMovement ? touchSpeed : speed);
 		moveBody(this.player, (x * Math.cos(this.yaw) + z * Math.sin(this.yaw)) * dt, (-x * Math.sin(this.yaw) + z * Math.cos(this.yaw)) * dt, this.bounds, this.obstacles);
 		if (input.pressed.jump && this.player.y === 0) this.player.vy = 6;
 		this.player.vy -= 18 * dt;
@@ -33489,17 +34024,34 @@ var Simulation = class {
 		});
 		if (this.kills >= this.nextTrashKill && this.spawnTrash()) this.nextTrashKill = this.kills + 12;
 		if (this.encounterMode === "vr") this.updateVRSpawns(dt);
-		else if (!this.enemies.some((e) => e.type !== "trash")) {
-			this.nextWave -= dt;
-			if (this.nextWave <= 0) {
-				this.spawnWave();
-				this.nextWave = 4;
-				this.reserve[0] += 15;
-				this.reserve[1] += 4;
+		else {
+			if (!this.waveQueue.length && !this.enemies.some((e) => e.type !== "trash")) {
+				this.nextWave -= dt;
+				if (this.nextWave <= 0) {
+					this.spawnWave();
+					this.nextWave = 4;
+					this.reserve[0] += 15;
+					this.reserve[1] += 4;
+				}
 			}
+			this.updateWaveSpawns(dt);
 		}
 		if (this.player.health <= 0) {
 			this.ended = true;
+			this.defeatAge = 0;
+			this.trigger = false;
+			this.scopeAge = 0;
+			this.projectiles = [];
+			this.effects = [];
+			this.cakes = [];
+			this.pendingAttacks = [];
+			for (const e of this.enemies) {
+				e.state = "victory";
+				e.animation = "idle";
+				e.hidden = false;
+				e.shield = false;
+				e.victoryDelay = this.random();
+			}
 			this.events.push("over");
 		}
 	}
@@ -33534,10 +34086,28 @@ var ARENAS = [
 		name: "Parking lot",
 		description: "Garage and parking barriers",
 		defaultPeriod: "night"
+	},
+	{
+		id: 5,
+		key: "snow",
+		name: "Snow set",
+		description: "Original Christmas arena",
+		defaultPeriod: "day",
+		periods: ["day"],
+		legacy: true
+	},
+	{
+		id: 6,
+		key: "corridor",
+		name: "The corridor",
+		description: "Original corridor set",
+		defaultPeriod: "day",
+		legacy: true
 	}
 ];
 function arenaScene(arena, period) {
-	if (!["day", "night"].includes(period)) throw new Error(`Unknown lighting variant ${period}`);
+	if (!(arena.periods || ["day", "night"]).includes(period)) throw new Error(`Unknown lighting variant ${period}`);
+	if (arena.legacy) return `assets/legacy/${arena.key}-${period}/scene.json`;
 	return period === arena.defaultPeriod ? `assets/vr/${arena.key}/scene.json` : `assets/variants/${arena.key}-${period}/scene.json`;
 }
 //#endregion
@@ -33583,6 +34153,7 @@ function weaponLayout(width, height) {
 function muzzlePixel(id, width, height) {
 	const { halfH, halfW, baseY, centerX } = weaponLayout(width, height);
 	const [x, y] = {
+		dualuzis: [.35, -.08],
 		flamethrower: [.21, -.09],
 		leafblower: [.14, -.405],
 		ak47: [.21, .01]
@@ -33952,6 +34523,23 @@ var VRExperience = class {
 	}
 };
 //#endregion
+//#region src/spawn-surface.js
+function floorSupportsSpawn(meshes, floorY) {
+	const ray = new Raycaster(), origin = new Vector3(), down = new Vector3(0, -1, 0);
+	return (x, z) => [
+		[0, 0],
+		[1, 0],
+		[-1, 0],
+		[0, 1],
+		[0, -1]
+	].every(([dx, dz]) => {
+		origin.set(x + dx, floorY + 1, z + dz);
+		ray.set(origin, down);
+		ray.far = 2;
+		return ray.intersectObjects(meshes, false).some((hit) => Math.abs(hit.point.y - floorY) < .5);
+	});
+}
+//#endregion
 //#region src/destructibles.js
 function damageSection(health, section, damage) {
 	health[section] = Math.max(0, health[section] - damage);
@@ -34094,6 +34682,8 @@ async function loadWorld(episode, onProgress, period) {
 		if (box.containsPoint(spawn3)) continue;
 		obstacles.push({
 			nodeId: n.id,
+			minY: box.min.y,
+			maxY: box.max.y,
 			minX: box.min.x - .05,
 			maxX: box.max.x + .05,
 			minZ: box.min.z - .05,
@@ -34129,8 +34719,24 @@ async function loadWorld(episode, onProgress, period) {
 		...positionOf(id),
 		id: `trash-${id}`
 	})).filter((p) => Number.isFinite(p.x));
+	const canOccupySpawn = arena.key === "corridor" ? floorSupportsSpawn(staticMeshes.filter((m) => /floor/i.test(m.parent.name)), floorY) : () => true;
+	const trashParent = nodes.get(data.nodes.find((n) => data.trashSpawnPoints?.includes(n.id))?.parent);
+	const trashSitesForPlayer = arena.key === "town" && trashParent ? (player) => {
+		return townTrashSites(trashParent.worldToLocal(new Vector3(player.x, floorY, player.z))).map((point, i) => {
+			const p = trashParent.localToWorld(new Vector3(...point));
+			return {
+				x: p.x,
+				y: p.y,
+				z: p.z,
+				id: `town-bin-${point[0]}-${point[2]}`
+			};
+		});
+	} : null;
 	const spawnRay = new Raycaster(), spawnOrigin = new Vector3(), spawnDirection = new Vector3();
 	return {
+		deathDurations: Object.fromEntries(Object.entries(roster.templates).map(([key, t]) => [key, t.clips.death.duration])),
+		trashSitesForPlayer,
+		canOccupySpawn,
 		pickups,
 		timeOfDay: period,
 		variantNote: data.variantNote || null,
@@ -34252,6 +34858,8 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.outputColorSpace = SRGBColorSpace;
 var camera = new PerspectiveCamera(65, innerWidth / innerHeight, .05, 400);
 camera.rotation.order = "YXZ";
+var defeat = new DefeatPresentation(camera);
+var deathClip = null;
 var stored = readSaved("puppet-web-settings-v1", {});
 var input = new Input(canvas, stored);
 input.onError = (error) => reportError(error, {
@@ -34346,7 +34954,10 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 function setMode(next) {
+	if (next !== "over") defeat.stop();
 	mode = next;
+	document.body.dataset.mode = next;
+	document.body.classList.toggle("touch-playing", showTouch && next === "playing");
 	setContext({
 		phase: mode,
 		episode
@@ -34423,8 +35034,12 @@ async function loadSounds() {
 			reportError(error, { operation: `load ${name} audio` });
 		}
 	}));
+	deathClip = await fetchJSON("assets/defeat/camera.json");
 	const extras = {
+		...await fetchJSON("assets/defeat/audio.json"),
+		...await fetchJSON("assets/enemies/trash-audio/audio.json"),
 		...await fetchJSON("assets/vr/weapons/audio.json"),
+		...await fetchJSON("assets/extra-weapons/audio.json"),
 		mopHit: "assets/weapons/mop-hit.wav",
 		mopMiss: "assets/weapons/mop-miss.wav"
 	};
@@ -34500,6 +35115,7 @@ function updateLoopSound() {
 	if (loopSound) loopSound.gain.gain.value = volume * .6;
 }
 function clearActors() {
+	defeat.stop();
 	weaponEffects?.dispose();
 	weaponEffects = null;
 	enemyEffects?.dispose();
@@ -34512,6 +35128,9 @@ function clearActors() {
 	decorative = [];
 }
 async function selectEpisode(ep) {
+	const arena = ARENAS.find((a) => a.id === ep), periods = arena.periods || ["day", "night"];
+	for (const option of $("#time-of-day").options) option.disabled = !periods.includes(option.value);
+	if (!periods.includes($("#time-of-day").value)) $("#time-of-day").value = arena.defaultPeriod;
 	const token = ++loadToken;
 	episode = ep;
 	setMode("loading");
@@ -34526,12 +35145,13 @@ async function selectEpisode(ep) {
 			next.dispose();
 			return;
 		}
+		const extraClips = await fetchJSON("assets/extra-weapons/animations.json");
 		const legacyClips = await fetchJSON("assets/weapons/animations.json"), vrClips = await fetchJSON("assets/vr/weapons/animations.json");
 		const clips = [...legacyClips.map((w) => Object.fromEntries(Object.entries(w).map(([k, frames]) => [k, Array.isArray(frames) ? frames.map((f) => ({
 			...f,
 			texture: "assets/weapons/" + f.texture
-		})) : frames]))), ...WEAPONS.slice(3).map((w) => vrClips[w.id])];
-		const names = [...new Set(clips.flatMap((w) => Object.values(w).filter(Array.isArray).flat().map((f) => f.texture)))];
+		})) : frames]))), ...WEAPONS.slice(3).map((w) => vrClips[w.id] || extraClips[w.id])];
+		const names = [...new Set(clips.flatMap((w) => Object.values(w).filter(Array.isArray).flat().concat(Object.values(w.left || {}).filter(Array.isArray).flat()).map((f) => f.texture)))];
 		const loadedImages = await Promise.all(names.map((n) => loadImage(n)));
 		if (token !== loadToken) {
 			next.dispose();
@@ -34579,6 +35199,16 @@ async function selectEpisode(ep) {
 function runOptions() {
 	const options = {
 		...world,
+		projectileOrigin(e) {
+			const actor = enemyActors.get(e.id), node = actor?.nodes[actor.rig.nodes.findIndex((n) => n.name === "enemyPosition")];
+			if (!node) return null;
+			const p = node.getWorldPosition(new Vector3());
+			return {
+				x: p.x,
+				y: p.y - world.floorY,
+				z: p.z
+			};
+		},
 		encounterMode: $("#encounter-mode").value,
 		startingWeapon: Number($("#starting-weapon").value) || 0
 	};
@@ -34595,6 +35225,7 @@ function runOptions() {
 async function startRun() {
 	if (!world || mode === "loading" || starting) return;
 	starting = true;
+	if (showTouch && !vr.active && !document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen({ navigationUI: "hide" }).then(() => screen.orientation?.lock?.("landscape")).catch(() => {});
 	$("#play").disabled = true;
 	$("#restart").disabled = true;
 	$("#loading-status").textContent = "Preparing sound and starting the run…";
@@ -34630,7 +35261,7 @@ $("#resume").onclick = async () => {
 $("#pause").onclick = () => pause();
 $("#main-menu").onclick = () => selectEpisode(episode);
 $("#reload-app").onclick = () => location.reload();
-document.querySelector(".map-options").innerHTML = ARENAS.map((a) => `<button class="map" data-episode="${a.id}"><small>VR ARENA ${String(a.id).padStart(2, "0")}</small><strong>${a.name}</strong><span>${a.description}</span></button>`).join("");
+document.querySelector(".map-options").innerHTML = ARENAS.map((a) => `<button class="map" data-episode="${a.id}"><small>ARENA ${String(a.id).padStart(2, "0")}</small><strong>${a.name}</strong><span>${a.description}</span></button>`).join("");
 WEAPONS.forEach((w, i) => $("#starting-weapon").add(new Option(w.name, i)));
 $("#pause-loadout").onclick = () => {
 	sim.switchWeapon();
@@ -34662,6 +35293,8 @@ function storeSettings() {
 		invertY: input.invertY,
 		volume,
 		showTouch,
+		leftHanded: input.leftHanded,
+		touchExtended: $("#touch-extended").checked,
 		profile: $("#profile").value
 	});
 }
@@ -34722,6 +35355,23 @@ $("#invert").onchange = (e) => {
 	input.invertY = e.target.checked;
 	storeSettings();
 };
+$("#touch-left").checked = input.leftHanded;
+$("#touch-extended").checked = stored.touchExtended ?? false;
+function touchLayout() {
+	document.body.classList.toggle("touch-left", input.leftHanded);
+	document.body.classList.toggle("touch-extended", $("#touch-extended").checked);
+}
+touchLayout();
+$("#touch-left").onchange = (e) => {
+	input.clear();
+	input.leftHanded = e.target.checked;
+	touchLayout();
+	storeSettings();
+};
+$("#touch-extended").onchange = () => {
+	touchLayout();
+	storeSettings();
+};
 $("#touch-toggle").checked = showTouch;
 $("#touch-toggle").onchange = (e) => {
 	showTouch = e.target.checked;
@@ -34733,8 +35383,9 @@ function aimRay(x = 0, y = 0) {
 		if (x || y) ray.ray.direction.add(new Vector3(x, y, 0)).normalize();
 	} else ray.setFromCamera(new Vector2(x, y), camera);
 }
-function weaponMuzzle() {
+function weaponMuzzle(mirror = false) {
 	const p = muzzlePixel(sim.weapon.id, innerWidth, innerHeight);
+	if (mirror) p.x = innerWidth - p.x;
 	if (vr.active) {
 		vr.weapon.updateWorldMatrix(true, false);
 		return vr.weapon.localToWorld(new Vector3((p.x / innerWidth - .5) * 1.1, (.5 - p.y / innerHeight) * .7, 0));
@@ -34747,9 +35398,9 @@ function shoot() {
 	if (!sim.shot()) return;
 	shotFlash = .14;
 	input.rumble();
-	if (!sim.weapon.continuous && sim.weapon.id !== "mop") sound(sim.weapon.id || (sim.weaponIndex === 1 ? "shotgun" : "shot"));
+	if (!sim.weapon.continuous && !sim.weapon.hitDelay) sound(sim.weapon.id || (sim.weaponIndex === 1 ? "shotgun" : "shot"));
 	if (sim.weapon.perk) return;
-	if (sim.weapon.id === "mop") {
+	if (sim.weapon.hitDelay) {
 		aimRay();
 		sim.pendingAttacks.at(-1).direction = ray.ray.direction.clone();
 		return;
@@ -34757,6 +35408,7 @@ function shoot() {
 	const meshes = [...enemyActors.values()].filter((actor) => actor.state !== "death" && actor.visible).flatMap((actor) => actor.meshes.filter((m) => m.visible));
 	aimRay();
 	weaponEffects?.emit(sim.weapon, ray.ray, world.staticMeshes, meshes, weaponMuzzle());
+	if (sim.weapon.dual) weaponEffects?.emit(sim.weapon, ray.ray, world.staticMeshes, meshes, weaponMuzzle(true));
 	if (sim.weapon.cone) {
 		aimRay();
 		const origin = ray.ray.origin.clone(), forward = ray.ray.direction.clone();
@@ -34776,9 +35428,10 @@ function shoot() {
 		return;
 	}
 	for (let pellet = 0; pellet < sim.weapon.pellets; pellet++) {
-		const spread = sim.weapon.pellets === 1 ? 0 : .065;
+		const spread = sim.weapon.pellets === 1 || sim.weapon.dual ? 0 : .065;
 		aimRay((Math.random() - .5) * spread, (Math.random() - .5) * spread);
 		ray.far = sim.weapon.range;
+		if (sim.weapon.dual) ray.ray.origin.addScaledVector(new Vector3().crossVectors(ray.ray.direction, new Vector3(0, 1, 0)).normalize(), pellet === 0 ? .35 : -.35);
 		const hit = ray.intersectObjects(meshes, false)[0];
 		const wall = ray.intersectObjects(world.staticMeshes, false)[0];
 		if (wall && (!hit || wall.distance < hit.distance - .1)) {
@@ -34816,7 +35469,6 @@ function updateActors(dt) {
 			actor = world.makePuppet(model);
 			actor.hitVersion = e.hitVersion || 0;
 			actor.setEnemyId(e.id);
-			labelEnemy(actor, e.type);
 			enemyActors.set(e.id, actor);
 		}
 		actor.visible = !e.hidden;
@@ -34844,26 +35496,63 @@ function updateActors(dt) {
 }
 function drawWeapon() {
 	ctx.clearRect(0, 0, innerWidth, innerHeight);
-	if (!hasPlayed || ![
-		"playing",
-		"paused",
-		"over"
-	].includes(mode) || !sim) return;
+	if (!hasPlayed || !["playing", "paused"].includes(mode) || !sim) return;
 	weaponVisual = weaponFrame(weaponClips[sim.weaponIndex], sim);
-	const image = images[weaponVisual.texture];
-	if (!image) throw new Error(`Missing weapon atlas: ${weaponVisual.texture}`);
-	const [u, v, uw, vh] = weaponVisual.uv, [left, top, right, bottom] = weaponVisual.bounds;
-	const { halfH, halfW, baseY } = weaponLayout(innerWidth, innerHeight);
-	ctx.drawImage(image, Math.round(u * image.width), Math.round((1 - v - vh) * image.height), Math.round(uw * image.width), Math.round(vh * image.height), innerWidth / 2 + left * halfW, baseY - top * halfH, (right - left) * halfW, (top - bottom) * halfH);
+	$("#crosshair").hidden = mode !== "playing" || weaponVisual.state === "scopeAim";
+	if (weaponVisual.state === "scopeAim" && !vr.active) {
+		const image = images[weaponVisual.texture];
+		const size = Math.max(innerWidth, innerHeight);
+		ctx.drawImage(image, (innerWidth - size) / 2, (innerHeight - size) / 2, size, size);
+		return;
+	}
+	const visuals = [weaponVisual];
+	if (weaponClips[sim.weaponIndex].left) visuals.push({
+		...weaponFrame(weaponClips[sim.weaponIndex].left, sim),
+		mirror: true
+	});
+	for (const visual of visuals) {
+		const image = images[visual.texture];
+		if (!image) throw new Error(`Missing weapon atlas: ${weaponVisual.texture}`);
+		const [u, v, uw, vh] = visual.uv, [left, top, right, bottom] = visual.bounds;
+		const { halfH, halfW, baseY } = weaponLayout(innerWidth, innerHeight);
+		ctx.save();
+		if (visual.mirror) {
+			ctx.translate(innerWidth, 0);
+			ctx.scale(-1, 1);
+		}
+		ctx.drawImage(image, Math.round(u * image.width), Math.round((1 - v - vh) * image.height), Math.round(uw * image.width), Math.round(vh * image.height), innerWidth / 2 + left * halfW, baseY - top * halfH, (right - left) * halfW, (top - bottom) * halfH);
+		ctx.restore();
+	}
 }
+var hudWeaponIcons = [
+	"weapon-1",
+	"weapon-3",
+	"weapon-7",
+	"extra-20",
+	"extra-18",
+	"weapon-9",
+	"extra-25",
+	"extra-27",
+	"extra-28",
+	"extra-21",
+	"weapon-2",
+	"weapon-4",
+	"weapon-8",
+	"weapon-10",
+	"extra-22"
+];
 function updateHUD() {
+	document.querySelector("[data-touch=aim]").hidden = !sim.weapon.scopeFov;
 	const i = sim.weaponIndex;
+	const icon = $("#weapon-icon");
+	const iconPath = `assets/hud/${hudWeaponIcons[i]}.png`;
+	if (icon.getAttribute("src") !== iconPath) icon.src = iconPath;
 	$("#health").textContent = Math.ceil(sim.player.health);
 	$("#health-fill").style.width = sim.player.health + "%";
 	$("#ammo").innerHTML = sim.weapon.melee ? "∞" : sim.weapon.perk ? sim.perkTimers[i] > 0 ? `${Math.ceil(sim.perkTimers[i])}s` : "READY" : `${Math.floor(sim.ammo[i])} <small>/ ${sim.reserve[i]}</small>`;
 	$("#weapon-name").textContent = sim.weapon.name;
 	$("#wave").textContent = `WAVE ${String(Math.max(1, sim.wave)).padStart(2, "0")}`;
-	$("#remaining").textContent = sim.enemies.length ? `${sim.enemies.length} PUPPETS LEFT` : `NEXT WAVE IN ${Math.ceil(sim.nextWave)}`;
+	$("#remaining").textContent = sim.waveQueue.length ? `${sim.enemies.length} ACTIVE · ${sim.waveQueue.length} INCOMING` : sim.enemies.length ? `${sim.enemies.length} PUPPETS LEFT` : `NEXT WAVE IN ${Math.ceil(sim.nextWave)}`;
 	$("#score").textContent = `${sim.score.toLocaleString()} POINTS`;
 	$("#reload-status").textContent = sim.weapon.melee ? input.pad ? `MELEE · SWITCH · B${input.bindings.switch}` : "MELEE · Q · SWITCH" : sim.reloading ? `RELOADING ${sim.reloading.toFixed(1)}s` : input.pad ? `RELOAD · B${input.bindings.reload}   SWITCH · B${input.bindings.switch}` : "R · RELOAD   Q · SWITCH";
 	$("#hit-screen").style.opacity = sim.hurt;
@@ -34934,7 +35623,7 @@ function frame(now) {
 			if (!vr.active) {
 				camera.position.set(sim.player.x, world.eyeHeight + sim.player.y, sim.player.z);
 				camera.rotation.set(sim.pitch, sim.yaw, 0);
-				camera.fov = state.aim ? 43 : 65;
+				camera.fov = sim.weapon.scopeFov ? sim.scopeAge >= .5 ? sim.weapon.scopeFov : 65 : state.aim ? 43 : 65;
 				camera.updateProjectionMatrix();
 				camera.updateMatrixWorld();
 			} else vr.sync(sim, world);
@@ -34943,16 +35632,22 @@ function frame(now) {
 			enemyEffects?.update(sim, enemyActors);
 			if (state.fire) shoot();
 			for (const event of sim.events) {
+				if (typeof event === "string" && event.startsWith("trash")) sound(event);
 				if (event === "mopHit") {
 					hitMarker = .18;
 					sound("mopHit");
 				}
 				if (event === "mopMiss") sound("mopMiss");
+				if (["batHit", "axeHit"].includes(event)) {
+					hitMarker = .18;
+					sound(event.slice(0, -3));
+				}
+				if (["batMiss", "axeMiss"].includes(event)) sound(event.slice(0, -4) + "Reload");
 				if ([
 					"reload",
 					"hurt",
 					"pickup"
-				].includes(event)) sound(event);
+				].includes(event)) sound(event === "reload" && soundBuffers[sim.weapon.id + "Reload"] ? sim.weapon.id + "Reload" : event);
 				if (event === "over") {
 					best = Math.max(best, sim.score);
 					save("puppet-web-best-v1", best);
@@ -34960,13 +35655,30 @@ function frame(now) {
 					$("#pause-detail").textContent = `${sim.score} points · ${sim.kills} puppets · ${Math.floor(sim.time)} seconds · ${sim.shotsFired} attacks · Wave ${sim.wave} · Best ${best}`;
 					$("#resume").hidden = true;
 					setMode("over");
-					$("#restart").focus();
+					defeat.start(sim, deathClip);
+					sound("playerDeath");
+					$("#pause-menu").hidden = true;
 				}
 			}
 			sim.events = [];
 			shotFlash = Math.max(0, shotFlash - dt);
 			hitMarker = Math.max(0, hitMarker - dt);
 			updateHUD();
+		}
+		if (mode === "over" && sim) {
+			sim.updateDefeat(dt);
+			updateActors(dt);
+			enemyEffects?.update(sim, enemyActors);
+			defeat.update(dt, sim, {
+				audio,
+				buffers: soundBuffers,
+				volume,
+				vr: vr.active
+			});
+			if (sim.defeatAge >= 1.2 && $("#pause-menu").hidden) {
+				$("#pause-menu").hidden = false;
+				$("#restart").focus();
+			}
 		}
 		if (mode === "menu" && world && !vr.active) {
 			camera.position.set(world.spawn.x, world.eyeHeight, world.spawn.z);
@@ -34978,6 +35690,11 @@ function frame(now) {
 		if (world) {
 			vr.update(dt, sim, mode, state.pressed.teleport);
 			drawWeapon();
+			if (hasPlayed && [
+				"playing",
+				"paused",
+				"over"
+			].includes(mode)) drawFishSplat(ctx, world.roster.projectiles.fishSplat, sim?.fishSplat, innerWidth, innerHeight);
 			renderer.render(world.scene, camera);
 		}
 	} catch (error) {
@@ -35017,6 +35734,7 @@ window.puppetDebug = { getState: () => ({
 		texture: weaponVisual.texture
 	} : null,
 	wave: sim?.wave,
+	incoming: sim?.waveQueue.length,
 	enemies: sim?.enemies.length,
 	corpses: sim?.corpses.length,
 	animations: [...enemyActors.values(), ...decorative].map((actor) => actor.snapshot()),
@@ -35046,4 +35764,4 @@ window.puppetDebug = { getState: () => ({
 await selectEpisode(1);
 //#endregion
 
-//# sourceMappingURL=main-DJjZvRrF.js.map
+//# sourceMappingURL=main-85Kt1s1c.js.map

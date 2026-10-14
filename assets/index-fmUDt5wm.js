@@ -1,4 +1,4 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./main-DJjZvRrF.js","./diagnostics-De6GANFg.js","./preload-helper-u78yZ8EC.js"])))=>i.map(i=>d[i]);
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./main-85Kt1s1c.js","./diagnostics-De6GANFg.js","./preload-helper-u78yZ8EC.js"])))=>i.map(i=>d[i]);
 import { r as reportError } from "./diagnostics-De6GANFg.js";
 import { t as __vitePreload } from "./preload-helper-u78yZ8EC.js";
 //#region \0vite/modulepreload-polyfill.js
@@ -34,11 +34,11 @@ import { t as __vitePreload } from "./preload-helper-u78yZ8EC.js";
 //#endregion
 //#region src/bootstrap.js
 try {
-	await __vitePreload(() => import("./main-DJjZvRrF.js"), __vite__mapDeps([0,1,2]), import.meta.url);
+	await __vitePreload(() => import("./main-85Kt1s1c.js"), __vite__mapDeps([0,1,2]), import.meta.url);
 } catch (error) {
 	reportError(error, { phase: "startup" });
 	document.querySelector("#loading-status").textContent = "Startup failed. Open Diagnostics for details, then reload.";
 }
 //#endregion
 
-//# sourceMappingURL=index-Cjfrt3Yq.js.map
+//# sourceMappingURL=index-fmUDt5wm.js.map

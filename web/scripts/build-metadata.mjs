@@ -2,10 +2,22 @@ import {readFile,writeFile} from 'node:fs/promises';
 
 // Run after Vite so the published HTML and copied thumbnail are checked together.
 const output=new URL('../dist/',import.meta.url);
-const imagePath='social/puppet-war-preview.png';
+const imagePath='social/puppet-war-preview.jpg';
 const image=await readFile(new URL(imagePath,output));
-if(image.subarray(0,8).toString('hex')!=='89504e470d0a1a0a')throw new Error(`Sharing thumbnail is not a PNG: ${imagePath}`);
-const width=image.readUInt32BE(16),height=image.readUInt32BE(20);
+if(image.readUInt16BE(0)!==0xffd8)throw new Error(`Sharing thumbnail is not a JPEG: ${imagePath}`);
+let width=0,height=0;
+for(let offset=2;offset+4<image.length;){
+ if(image[offset++]!==0xff)throw new Error('Invalid JPEG marker');
+ while(image[offset]===0xff)offset++;
+ const marker=image[offset++];
+ if(marker===0xda||marker===0xd9)break;
+ const length=image.readUInt16BE(offset);
+ if(length<2||offset+length>image.length)throw new Error('Invalid JPEG segment');
+ if([0xc0,0xc1,0xc2,0xc3,0xc5,0xc6,0xc7,0xc9,0xca,0xcb,0xcd,0xce,0xcf].includes(marker)){
+  height=image.readUInt16BE(offset+3);width=image.readUInt16BE(offset+5);break;
+ }
+ offset+=length;
+}
 if(!width||!height)throw new Error('Sharing thumbnail has invalid dimensions');
 const repository=process.env.GITHUB_REPOSITORY||'CPritchard007/puppet_wars_recomp';
 const [owner,name]=repository.split('/');
@@ -20,7 +32,7 @@ function replace(pattern,value,label){
  html=html.replace(pattern,(_,before,after)=>before+escape(value)+after);
 }
 replace(/(<link rel="canonical" href=")[^"]*(")/,site.href,'canonical');
-for(const [key,value] of Object.entries({'og:url':site.href,'og:image':new URL(imagePath,site).href,'og:image:width':width,'og:image:height':height,'twitter:image':new URL(imagePath,site).href})){
+for(const [key,value] of Object.entries({'og:url':site.href,'og:image':new URL(imagePath,site).href,'og:image:type':'image/jpeg','og:image:width':width,'og:image:height':height,'twitter:image':new URL(imagePath,site).href})){
  replace(new RegExp(`(<meta (?:property|name)="${key}" content=")[^"]*(")`),value,key);
 }
 await writeFile(new URL('index.html',output),html);

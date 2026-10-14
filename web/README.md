@@ -188,7 +188,7 @@ requested from the Play gesture where available; OS gestures/browser chrome rema
 platform-controlled. Chrome mobile emulation covers multi-touch and pinch handling;
 physical iOS/Android parity has not yet been verified.
 
-Every production build includes `public/social/puppet-war-preview.png` and runs
+Every production build includes `public/social/puppet-war-preview.jpg` and runs
 `scripts/build-metadata.mjs` to verify the image and write its dimensions and
 absolute Open Graph/Twitter URLs into `dist/index.html`. GitHub Actions uses
 `GITHUB_REPOSITORY` to determine the Pages URL. Set `SITE_URL` when building for a

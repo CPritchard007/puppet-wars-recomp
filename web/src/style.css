@@ -47,7 +47,7 @@ body[data-mode="playing"]{touch-action:none;-webkit-user-select:none;user-select
 #game,#weapon,#touch-controls,#touch-controls *{touch-action:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 #touch-controls{inset:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);pointer-events:auto;user-select:none}
 #look-area{position:absolute;inset:0;z-index:0}
-#move-stick{left:7.292%;bottom:9.375%;width:12.5%;height:18.75%;border:0;border-radius:0;background:url('/assets/touch/pad.png') center/contain no-repeat;z-index:1;pointer-events:none;opacity:.75}
+#move-stick{left:13.541667%;bottom:18.75%;width:min(12.5vw,18.75dvh);height:auto;aspect-ratio:1;transform:translate(-50%,50%);border:0;border-radius:50%;background:url('/assets/touch/pad.png') center/100% 100% no-repeat;z-index:1;pointer-events:none;opacity:.75}
 #move-stick i{width:100%;height:100%;border:0;border-radius:0;background:url('/assets/touch/nose.png') center/contain no-repeat}
 .touch-actions{inset:0;pointer-events:none!important;display:block}
 .touch-actions button{position:absolute;pointer-events:auto;border:1px solid #ffed8d88;color:#fff5a8;text-shadow:1px 1px #000;font-size:clamp(10px,2.2vh,16px);padding:4px;border-radius:12px;background:#1b294980}
@@ -74,7 +74,7 @@ html{touch-action:pan-y}
 body.touch-playing #hud{right:32%}
 body.touch-playing #pause kbd{display:none}
 body:not(.touch-extended) .touch-actions [data-touch="reload"],body:not(.touch-extended) .touch-actions [data-touch="jump"],body:not(.touch-extended) .touch-actions [data-touch="teleport"]{display:none}
-body.touch-left #move-stick{left:81.25%}
+body.touch-left #move-stick{left:87.5%}
 body.touch-left .touch-actions [data-touch="fire"]{left:2.083%;right:auto}
 /* Episode 2 PackedSprite HUD. Artwork is decoded from the original atlases. */
 body{--hud-u:min(.208333vw,.3125dvh)}

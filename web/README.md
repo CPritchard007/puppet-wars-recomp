@@ -141,3 +141,29 @@ Screenshots go to `artifacts/`. Controller hardware itself has not been tested.
 Code boundaries: `input.js` normalizes controls; `simulation.js` owns gameplay state;
 `world.js` loads recovered assets; `puppet-animation.js` skins and animates puppets; `main.js` coordinates rendering/UI/audio;
 `diagnostics.js` owns error reporting and persistence fallbacks.
+
+## Build and publish to GitHub Pages
+
+Use Node.js 22 (22.12 or newer). From the repository root:
+
+```sh
+bash scripts/build-web.sh
+```
+
+This installs the locked dependencies, runs the unit tests, and builds
+`web/dist/`, including `.nojekyll`. All runtime assets are committed; the
+original APK/IPA files and extraction tools are not needed to build the site.
+
+In GitHub, set **Settings → Pages → Source → GitHub Actions**, then push to
+`main` or manually run **Build and publish web game** in the Actions tab.
+The workflow tests/builds the site, creates or updates the `gh-pages` branch
+with only the build output, and deploys the same artifact to Pages. Keep Pages
+configured for Actions rather than branch publishing: pushes made with the
+built-in token do not trigger a separate Pages build. No personal token is needed.
+Repository/organization policies must allow the workflow to write repository
+contents and deploy to the `github-pages` environment.
+
+The publish script preserves branch history and never force-pushes. It replaces
+previous generated files on `gh-pages`, so keep source and hand-written files on
+`main`. Local publishing is also available with an authenticated `origin`:
+`bash scripts/publish-gh-pages.sh` (updates the branch only).
